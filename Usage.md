@@ -1,7 +1,7 @@
 # Prerequisite
 
 1. First initialize conda environment by executing `initialize.sh`
-2. Attain a api key from `aistudio.google.com` from `Google AI Studio`
+2. Attain a api key from [Google AI Studio](https://aistudio.google.com)
 3. Add your api key into project by editing `config.py`
 
 # Add a new character
