@@ -1,7 +1,7 @@
 # Prerequisite
 
 1. First initialize conda environment by executing `initialize.sh`
-2. Attain a api key from [Google AI Studio](https://aistudio.google.com)
+2. Attain an api key from [Google AI Studio](https://aistudio.google.com)
 3. Add your api key into project by editing `config.py`
 
 # Add a new character
@@ -14,5 +14,5 @@
 
 # Command-line conversation frontend interface
 
-1. Complete the prerequisite steps and make sure you have already add your character
+1. Complete the prerequisite steps and make sure you have already added your character
 2. Execute `python app.py -c [charName] -u [yourName] -f`
