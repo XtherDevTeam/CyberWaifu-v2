@@ -1,0 +1,4 @@
+langchain-google-genai
+pillow
+langchain
+argparse
