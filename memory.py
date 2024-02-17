@@ -25,11 +25,15 @@ class Memory:
                 file.write(json.dumps({
                     'charName': char,
                     'pastMemories': '',
-                    'charPrompt': ''
+                    'charPrompt': '',
+                    'exampleChats': '',
                 }))
         # read character messages
         with open(self.path, 'r') as file:
             self.char = json.loads(file.read())
+
+    def getExampleChats(self) -> str:
+        return self.char['exampleChats']
 
     def getCharName(self) -> str:
         return self.char['charName']
@@ -59,5 +63,6 @@ class Memory:
             'userName': userName,
             'datePrompt': models.TimeProider(),
             'charPrompt': self.getCharPrompt(),
-            'memoryPrompt': self.getPastMemories()
+            'memoryPrompt': self.getPastMemories(),
+            'exampleChats': self.getExampleChats()
         })

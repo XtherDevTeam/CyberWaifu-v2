@@ -32,4 +32,8 @@ class Chatbot:
         return msg.content
 
     def __exit__(self, type, value, traceback) -> None:
-        self.memory.storeMemory(self.userName, self.conversation.summarize())
+        if value is None:
+            self.memory.storeMemory(self.userName, self.conversation.summarize())
+        else:
+            # ignoring the process
+            pass
