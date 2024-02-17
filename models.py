@@ -44,3 +44,14 @@ def MemoryMergingModel(userName: str, charName: str, summary: str, pastMemories:
         )),
         HumanMessage("")
     ])
+    
+def ImageParsingModelProvider():
+    return ChatGoogleGenerativeAI(
+        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True)
+    
+def ImageParsingModel(image: str) -> str:
+    llm = ImageParsingModelProvider()
+    return llm.invoke([
+        SystemMessage("You are received a image, your task is to descibe this image and output text prompt"),
+        HumanMessage({"type": "image_url", "image_url": image})
+    ]).content

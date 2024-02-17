@@ -2,3 +2,4 @@ langchain-google-genai
 pillow
 langchain
 argparse
+yiri-mirai

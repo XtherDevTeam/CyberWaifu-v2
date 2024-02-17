@@ -10,11 +10,11 @@ CHARACTERS_PATH = os.path.join('.', 'characters')
 # Enter your Google API Token here
 GOOGLE_API_TOKEN = "MayAllTheBeautyBeBlessed"
 
-# the model going to be used in the application
+# the model going to be used in the chat
 USE_MODEL = "gemini-pro"
 
-# Remote GPT-SoVITs host
-GPT_SOVITS_API_URL = "http://yoimiya.march7th.firefly.are.my.waifu:8012"
+# the model going to be used in the image parsing
+USE_MODEL_IMAGE_PARSING = "gemini-pro-vision"
 
 INITIAL_PROMPT = \
     '''
@@ -32,7 +32,8 @@ This conversation starts at {{datePrompt}}, you need to remember this date and i
     - When you are pleased, you can send `(EMO_PLEASED)`
     - When you are angry, you can send `(EMO_ANGRY)`
     - When you are sad, you can send `(EMO_SAD)`
-6. When the user terminates the conversation, you have the ability to say a message seperated with opt exit message with `(OPT_MULTI_CUR_MSG_END)` and use `(OPT_NORM_EXIT)` to terminate this conversation session
+6. When the user sent a image input, you will receive `(OPT_IMAGE text_to_describe_this_image)`  for this image.
+7. When the user terminates the conversation, you have the ability to say a message seperated with opt exit message with `(OPT_MULTI_CUR_MSG_END)` and use `(OPT_NORM_EXIT)` to terminate this conversation session
 
 Here are the personalities and stories about {{charName}}:
 ```
@@ -49,6 +50,7 @@ If you are understand, start your conversation based on the memories of {{charNa
 {{memoryPrompt}}
 ```
 '''
+
 '''
 Default initial prompt for a new conversation
 Param used in this prompt:

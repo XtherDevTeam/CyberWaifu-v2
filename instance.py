@@ -10,12 +10,19 @@ class Chatbot:
         self.llm = models.BaseModelProvider()
         self.memory = memory
         self.userName = userName
+        self.inChatting = False
         self.conversation = conversation.ConversationMemory(userName, self.memory, SystemMessage(
             self.memory.createCharPromptFromCharacter(self.userName)
         ))
 
     def __enter__(self):
         return None
+
+    def switchUser(self, name: str) -> None:
+        if self.inChatting:
+            print('Unable to perform this action: Character is chatting!')
+        else:
+            self.userName = name
 
     def begin(self, userInput: None | str) -> str:
         if userInput is not None or userInput == '(OPT_NO_RESPOND)':
@@ -31,9 +38,18 @@ class Chatbot:
         self.conversation.storeBotInput(msg)
         return msg.content
 
+    def termination(self) -> None:
+        self.memory.storeMemory(self.userName, self.conversation.summarize())
+        
+    def terminateChat(self, force=False) -> None:
+        self.inChatting = False
+        if not force:
+            self.termination()
+
     def __exit__(self, type, value, traceback) -> None:
+        self.inChatting = False
         if value is None:
-            self.memory.storeMemory(self.userName, self.conversation.summarize())
+            self.termination()
         else:
             # ignoring the process
             pass
