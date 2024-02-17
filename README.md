@@ -2,6 +2,14 @@
 
 [前情提要](https://www.bilibili.com/video/BV1rZ421B79N)
 
+一个基于 Google Gemini Pro 模型的角色模拟聊天机器人。
+
+### 使用
+
+- 目前可用的前端只有 `cmdline interfere frontend`，点击 [此处](Usage.md) 查看教程。
+
+**NOTES:** 该项目试验性地提供了 `YiriMirai` 的 `Python Binding`，很遗憾，由于 `mirai` 登陆年久失修，作者并未能成功检验。
+
 ### 原理
 
 为了节省 Token 和提升角色的灵活性，CyberWaifu-v2 采用了如下架构：

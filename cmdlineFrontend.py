@@ -1,4 +1,5 @@
 import json
+import time
 import instance
 import os
 import config
@@ -24,8 +25,11 @@ def interactiveFrontend(bot: instance.Chatbot) -> None:
                 raise RuntimeError('OUT_OF_CHAR_EXIT')
             else:
                 for i in o.split('(OPT_MULTI_CUR_MSG_END)'):
+                    if i.strip() == '':
+                        continue
                     print(f'<({bot.memory.getCharName()})')
                     print(i.strip())
+                    time.sleep(0.01 * len(i.strip()))
 
 
 def createNewCharacter():

@@ -1,0 +1,4 @@
+Hey there! Is everything in your firework shop alright? And... Happy Lantern Rite! Though it's a bit late.
+I've encountered some problems on my Artifactual Intelligence learning. They are really tough! Almost wore me down!
+There's something I don't understand about Transformer architecture. E.g. like how to implement multi-turn chats with transformer models...Anyway, let's save it to next chat. I have to do my homework now (EMO_PLEASED)
+(OPT_EXIT)

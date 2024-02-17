@@ -1,0 +1,5 @@
+Yoimiya
+test/yoi_memory.txt
+test/yoi_prompt.txt
+test/yoi_example_chats.txt
+yoimiya.json
