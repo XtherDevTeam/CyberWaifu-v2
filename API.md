@@ -1,120 +1,135 @@
-## API Documentation
+# API Documentation for Web Service
 
-### Authentication
+## Authentication
 
-#### User Login
-- **URL**: `/api/v1/user/login`
-- **Method**: POST
-- **Description**: Authenticate user login and start a session.
-- **Request Format**:
-  ```json
-  {
-    "password": "user_password"
-  }
-  ```
-- **Response Format**:
-  ```json
-  {
-    "data": "success",
-    "status": true
-  }
-  ```
-  or
-  ```json
-  {
-    "data": "invalid password",
-    "status": false
-  }
-  ```
+### `POST /api/v1/user/login`
 
-### Chat Operations
+- **Description:** User login to authenticate the session.
 
-#### Character List
-- **URL**: `/api/v1/char_list`
-- **Method**: POST
-- **Description**: Retrieve a list of characters.
-- **Request Format**: None
-- **Response Format**:
-  ```json
-  {
-    "data": ...,
-    "status": true
-  }
-  ```
+- **Parameters:**
 
-#### Establish Chat
-- **URL**: `/api/v1/chat/establish`
-- **Method**: POST
-- **Description**: Begin a chat session with a selected character.
-- **Request Format**:
-  ```json
-  {
-    "charName": "character_name",
-    "beginMsg": "initial_message"
-  }
-  ```
-- **Response Format**:
-  ```json
-  {
-    "response": "chatbot_response",
-    "session": "session_id",
-    "status": true
-  }
-  ```
+  - `password` (string): User password.
 
-#### Send Chat Message
-- **URL**: `/api/v1/chat/message`
-- **Method**: POST
-- **Description**: Send a message in an existing chat session.
-- **Request Format**:
-  ```json
-  {
-    "session": "session_id",
-    "msgChain": ["message1", "message2", ...]
-  }
-  ```
-- **Response Format**:
-  ```json
-  {
-    "response": "chatbot_response",
-    "session": "session_id",
-    "status": true
-  }
-  ```
+- **Response:**
 
-#### Terminate Chat
-- **URL**: `/api/v1/chat/terminate`
-- **Method**: POST
-- **Description**: End an ongoing chat session.
-- **Request Format**:
-  ```json
-  {
-    "session": "session_id"
-  }
-  ```
-- **Response Format**:
-  ```json
-  {
-    "data": "success",
-    "status": true
-  }
-  ```
+  - Success: `{ "data": "success", "status": true }`
 
-### File Attachments
+  - Failure: `{ "data": "invalid form", "status": false }` or `{ "data": "invalid password", "status": false }`
 
-#### Upload Audio Attachment
-- **URL**: `/api/v1/attachment/upload/audio`
-- **Method**: POST
-- **Description**: Upload an audio attachment to the chat session.
-- **Request Format**: FormData with audio file
-- **Response Format**:
-  ```json
-  {
-    "data": "success",
-    "status": true
-  }
-  ```
+## Character List
 
-### Notes
-- All endpoints require authentication. If not authenticated or session expired, appropriate error responses will be returned.
-- Responses include a `status` field indicating the success or failure of the request.
+### `POST /api/v1/char_list`
+
+- **Description:** Get the list of characters.
+
+- **Authentication:** Requires an authenticated session.
+
+- **Response:**
+
+  - Success: `{ "data": [character_list], "status": true }`
+
+  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }`
+
+## Chat Establishment
+
+### `POST /api/v1/chat/establish`
+
+- **Description:** Establish a chat session with a character.
+
+- **Parameters:**
+
+  - `charName` (string): Character name.
+
+  - `msgChain` (string): Initial message chain.
+
+- **Authentication:** Requires an authenticated session.
+
+- **Response:**
+
+  - Success: `{ "response": "chat_response", "session": "session_id", "status": true }`
+
+  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid form", "status": false }`
+
+## Send Chat Message
+
+### `POST /api/v1/chat/message`
+
+- **Description:** Send a message in an existing chat session.
+
+- **Parameters:**
+
+  - `session` (string): Chat session ID.
+
+  - `msgChain` (string): Message chain.
+
+- **Authentication:** Requires an authenticated session.
+
+- **Response:**
+
+  - Success: `{ "response": "chat_response", "session": "session_id", "status": true }`
+
+  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid form", "status": false }`
+
+## Terminate Chat Session
+
+### `POST /api/v1/chat/terminate`
+
+- **Description:** Terminate an existing chat session.
+
+- **Parameters:**
+
+  - `session` (string): Chat session ID.
+
+- **Authentication:** Requires an authenticated session.
+
+- **Response:**
+
+  - Success: `{ "data": "success", "status": true }`
+
+  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid form", "status": false }`
+
+## Attachment Upload - Audio
+
+### `POST /api/v1/attachment/upload/audio`
+
+- **Description:** Upload an audio attachment.
+
+- **Authentication:** Requires an authenticated session.
+
+- **Response:**
+
+  - Success: `{ "data": "success", "id": "attachment_id", "status": true }`
+
+  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid mimetype expect 'audio/'", "status": false }`
+
+## Attachment Upload - Image
+
+### `POST /api/v1/attachment/upload/image`
+
+- **Description:** Upload an image attachment.
+
+- **Authentication:** Requires an authenticated session.
+
+- **Response:**
+
+  - Success: `{ "data": "success", "id": "attachment_id", "status": true }`
+
+  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid mimetype expect 'image/'", "status": false }`
+
+## Attachment Download
+
+### `POST /api/v1/attachment/<attachmentId>`
+
+- **Description:** Download an attachment.
+
+- **Parameters:**
+
+  - `attachmentId` (string): Attachment ID.
+
+- **Authentication:** Requires an authenticated session.
+
+- **Response:**
+
+  - Success: Returns the file.
+
+  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }`

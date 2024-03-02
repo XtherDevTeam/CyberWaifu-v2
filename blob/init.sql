@@ -43,8 +43,10 @@ create table chatHistory (
 );
 
 create table attachments (
-    id                      integer PRIMARY KEY AUTOINCREMENT,
+    id                      string PRIMARY KEY,
     timestamp               integer NOTNULL,
-    role                    integer NOTNULL,
+    --- available: AUDIO = 0, IMG = 1
+    type                    integer NOTNULL,
+    contentType             string default 'application/octet-stream',
     blobMsg                 blob    NOTNULL
 );
