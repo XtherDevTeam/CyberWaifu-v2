@@ -61,7 +61,8 @@ class ConversationMemory:
                 'charName': self.char.getCharName(),
                 'userName': self.userName,
                 'conversation': conversation,
-                'charPrompt': self.char.getCharPrompt()
+                'charPrompt': self.char.getCharPrompt(),
+                'summaryDate': models.TimeProider()
             })), HumanMessage("")]
         ).content
         print(c)

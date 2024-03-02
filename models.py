@@ -6,8 +6,11 @@ Provides packages for model operating
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
+import transformers
+import torch
 import config
 import time
+
 
 # No need to handle by users, so not in config.py
 MODEL_SAFETY_SETTING = {
@@ -16,6 +19,11 @@ MODEL_SAFETY_SETTING = {
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
 }
+
+
+# google did not provide the fucking interface for counting token.
+def TokenCounter(string: str) -> int:
+    return len(string.strip().split(' '))
 
 
 def TimeProider() -> str:
@@ -39,15 +47,12 @@ def BaseModelProvider() -> ChatGoogleGenerativeAI:
         safety_settings=MODEL_SAFETY_SETTING)
 
 
-def MemoryMergingModel(userName: str, charName: str, summary: str, pastMemories: str) -> AIMessage:
+def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
     llm = BaseModelProvider()
     preprocessed = PreprocessPrompt(
         config.MEMORY_MERGING_PROMPT,
         {
-            'userName': userName,
             'charName': charName,
-            'summary': summary,
-            'summaryDate': DateProider(),
             'pastMemories': pastMemories
         }
     )
@@ -59,7 +64,7 @@ def MemoryMergingModel(userName: str, charName: str, summary: str, pastMemories:
 
 def ImageParsingModelProvider():
     return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, safety_settings=MODEL_SAFETY_SETTING)
+        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING)
 
 
 def ImageParsingModel(image: str) -> str:
@@ -69,3 +74,26 @@ def ImageParsingModel(image: str) -> str:
             "You are received a image, your task is to descibe this image and output text prompt"),
         HumanMessage({"type": "image_url", "image_url": image})
     ]).content
+
+
+def AudioToTextModel(audioPath: str) -> str:
+    interfereDevice = "cuda:0" if torch.cuda.is_available(
+    ) else "mpu" if torch.mps.is_available() else "cpu"
+    torchDType = torch.float16 if torch.cuda.is_available() else torch.float32
+
+    model_id = "openai/whisper-large-v3"
+
+    model = transformers.AutoModelForSpeechSeq2Seq.from_pretrained(
+        model_id, torch_dtype=torchDType, low_cpu_mem_usage=True, use_safetensors=True
+    )
+    model.to(interfereDevice)
+
+    pipe = transformers.pipeline(
+        task="automatic-speech-recognition",
+        model=model_id,
+        chunk_length_s=30,
+        device=interfereDevice,
+        torch_dtype=torchDType
+    )
+
+    return pipe(audioPath)['text']

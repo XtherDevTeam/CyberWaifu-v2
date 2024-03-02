@@ -7,30 +7,21 @@ import os
 import json
 import config
 import models
+import dataProvider
 
 
 class Memory:
     """
     __init__ function provides a constructor for this class
-    @param char the character name that storage in `characters` directory
-    @param user the user presented in the memories and conversation
-    @param createIfNotExist decide whether to create a new character when this character not exist
+    @param dProvider dataProvider object
+    @param char the character name
     """
 
-    def __init__(self, char: str, createIfNotExist: bool = False):
+    def __init__(self, dProvider: dataProvider.DataProvider, char: str):
         # create if not exist
-        self.path = os.path.join(config.CHARACTERS_PATH, char)
-        if createIfNotExist and not os.path.exists(self.path):
-            with open(self.path, 'w+') as file:
-                file.write(json.dumps({
-                    'charName': char,
-                    'pastMemories': '',
-                    'charPrompt': '',
-                    'exampleChats': '',
-                }))
+        self.dataProvider = dProvider
         # read character messages
-        with open(self.path, 'r') as file:
-            self.char = json.loads(file.read())
+        self.char = self.dataProvider.getCharacter(self.dataProvider.getCharacterId())
 
     def getExampleChats(self) -> str:
         return self.char['exampleChats']
@@ -49,12 +40,12 @@ class Memory:
         self.save()
 
     def save(self) -> None:
-        with open(self.path, 'w') as file:
-            file.write(json.dumps(self.char))
+        self.dataProvider.updateCharacter(self.dataProvider.getCharacterId(self.getCharName()), self.getCharName(), self.getCharPrompt(), self.getPastMemories())
 
     def storeMemory(self, userName: str, conversation: str) -> None:
-        self.char['pastMemories'] = models.MemoryMergingModel(
-            userName, self.getCharName(), conversation, self.getPastMemories()).content
+        self.char['pastMemories'] = self.char['pastMemories'].strip() + '\n' + conversation
+        if models.TokenCounter(self.char['pastMemories']) > config.MEMORY_SUMMARIZING_LIMIT:
+            self.char['pastMemories'] = models.MemorySummarizingModel(self.getCharName(), self.char['pastMemories']).content
         self.save()
 
     def createCharPromptFromCharacter(self, userName):

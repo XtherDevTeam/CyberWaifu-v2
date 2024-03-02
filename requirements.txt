@@ -3,3 +3,7 @@ pillow
 langchain
 argparse
 yiri-mirai
+flask
+flask_cors
+transformers
+torch
