@@ -3,6 +3,7 @@ import time
 import instance
 import os
 import config
+import dataProvider
 
 
 def interactiveFrontend(bot: instance.Chatbot) -> None:
@@ -32,14 +33,13 @@ def interactiveFrontend(bot: instance.Chatbot) -> None:
                     time.sleep(0.01 * len(i.strip()))
 
 
-def createNewCharacter():
+def createNewCharacter(dataProvider: dataProvider.DataProvider):
     print('CyberWaifu-v2 Character Creator')
     print('When the script ask for character prompt, and character initial memories, provide the path to plain text that contains information in need.')
     charName = input('(Character Name) ')
     pastMemories = input('(Path to character initial memories) ')
     charPrompt = input('(Path to character prompt) ')
     exampleChats = input('(Path to character example chats) ')
-    dest = input('(Filename of character profile) ')
 
     with open(pastMemories, 'r') as file:
         pastMemories = file.read()
@@ -50,12 +50,5 @@ def createNewCharacter():
     with open(exampleChats, 'r') as file:
         exampleChats = file.read()
 
-    with open(os.path.join(config.CHARACTERS_PATH, dest), 'w') as file:
-        file.write(json.dumps({
-            'charName': charName,
-            'pastMemories': pastMemories,
-            'charPrompt': charPrompt,
-            'exampleChats': exampleChats
-        }))
-
-    print(f'Successfully written character {charName} to {dest}.')
+    print(f'Successfully written character {charName} to DataProvider.')
+    dataProvider.createCharacter(charName, charPrompt, pastMemories, exampleChats)

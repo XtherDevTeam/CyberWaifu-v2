@@ -2,11 +2,11 @@ import models
 import instance
 import flask
 from flask_cors import CORS, cross_origin
-import webFrontend.config
 import time
-import chatbotManager
+import webFrontend.chatbotManager as chatbotManager
 import dataProvider
 import config
+import webFrontend.config
 from io import BytesIO
 
 app = flask.Flask(__name__)
@@ -64,6 +64,20 @@ def authenticateSession() -> int:
         return flask.session['user']
     except:
         return -1
+
+
+@app.route("/api/v1/service/info", methods=["GET"])
+def serviceInfo():
+    return {
+        'data': {
+            'initialized': dProvider.checkIfInitialized(),
+            'api_ver': 'v1',
+            'api_name': 'Yoimiya',
+            'image_model': config.USE_MODEL_IMAGE_PARSING,
+            'chat_model': config.USE_MODEL
+        },
+        'status': True
+    }
 
 
 @app.route("/api/v1/user/login", methods=["POST"])
@@ -194,7 +208,7 @@ def attachmentUploadImage():
         return {'data': 'success', 'id': id, 'status': True}
 
 
-@app.route("/api/v1/attachment/<str:attachmentId>", methods=["POST"])
+@app.route("/api/v1/attachment/<attachmentId>", methods=["POST"])
 def attachmentDownload(attachmentId: str):
     if not authenticateSession():
         return {'data': 'not authenticated', 'status': False}
@@ -223,8 +237,6 @@ def initialize():
     return {'data': 'success', 'status': True}
 
 
-def invoke(pBot: instance.Chatbot):
-    global bot
-    bot = pBot
+def invoke():
     app.run(webFrontend.config.APP_HOST,
             webFrontend.config.APP_PORT, debug=False)

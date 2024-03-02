@@ -1,10 +1,11 @@
 import config
+from dataProvider import DataProvider
 import memory
 import os
 import instance
 import argparse
 import cmdlineFrontend
-import webFrontend
+import webFrontend.web
 
 parser = argparse.ArgumentParser(description='A realistic anime waifu chatbot based on Google Gemini and Langchain library.')
 
@@ -23,12 +24,12 @@ def do_initialize():
     
 if __name__ == "__main__":
     do_initialize()
-    
+    dProvider = DataProvider(f'{config.BLOB_URL}/data.db')
     if args.frontend:
-        cmdlineFrontend.interactiveFrontend(instance.Chatbot(memory.Memory(args.char, False), args.user))
+        cmdlineFrontend.interactiveFrontend(instance.Chatbot(memory.Memory(dProvider, args.char), args.user))
     if args.server:
-        webFrontend.invoke(instance.Chatbot(memory.Memory(args.char, False), args.user))
+        webFrontend.web.invoke()
     elif args.new:
-        cmdlineFrontend.createNewCharacter()
+        cmdlineFrontend.createNewCharacter(dProvider)
     else:
         parser.print_help()

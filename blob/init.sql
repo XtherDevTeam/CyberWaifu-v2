@@ -1,52 +1,48 @@
-drop table if not exists config;
-drop table if not exists sharedTemplate;
-drop table if not exists emotionPacks;
-drop table if not exists personalCharacter;
+drop table if exists config;
+drop table if exists sharedTemplate;
+drop table if exists emotionPacks;
+drop table if exists personalCharacter;
 
 create table config (
     userName        string DEFAULT 'Jerry Chou',
-    passwordSalted  string NOTNULL,
-    avatar          blob NOTNULL,
-    
+    passwordSalted  string NOT NULL,
+    avatar          blob NOT NULL
 );
 
 create table emotionPacks (
     id              integer PRIMARY KEY AUTOINCREMENT,
-    name            string NOTNULL,
-    happy           blob NOTNULL,
-    sad             blob NOTNULL,
-    angry           blob NOTNULL,
-    guilty          blob NOTNULL
+    name            string NOT NULL,
+    happy           blob NOT NULL,
+    sad             blob NOT NULL,
+    angry           blob NOT NULL,
+    guilty          blob NOT NULL
 );
 
 create table personalCharacter (
     id                      integer PRIMARY KEY AUTOINCREMENT,
-    charName                string NOTNULL,
-    charPrompt              string NOTNULL,
-    initialMemories         string NOTNULL,
-    exampleChats            string NOTNULL,
-    pastMemories            string NOTNULL,
-    avatar                  blob NOTNULL,
-    emotionPack             int default 0,
-    creationTime            string NOTNULL
+    charName                string NOT NULL,
+    charPrompt              string NOT NULL,
+    initialMemories         string NOT NULL,
+    exampleChats            string NOT NULL,
+    pastMemories            string NOT NULL,
+    avatar                  blob NOT NULL,
+    emotionPack             integer default 0,
+    creationTime            string NOT NULL
 );
 
 create table chatHistory (
     id                      integer PRIMARY KEY AUTOINCREMENT,
-    charName                string NOTNULL,
-    --- available: bot = 0, user = 1
-    role                    integer NOTNULL,
-    --- available: TEXT = 0, IMG = 1, AUDIO = 2, EMOTION = 3
-    type                    integer NOTNULL,
-    text                    string NOTNULL,
-    timestamp               string NOTNULL
+    charName                string NOT NULL,
+    role                    integer NOT NULL,
+    type                    integer NOT NULL,
+    text                    string NOT NULL,
+    timestamp               string NOT NULL
 );
 
 create table attachments (
     id                      string PRIMARY KEY,
-    timestamp               integer NOTNULL,
-    --- available: AUDIO = 0, IMG = 1
-    type                    integer NOTNULL,
+    timestamp               integer NOT NULL,
+    type                    integer NOT NULL,
     contentType             string default 'application/octet-stream',
-    blobMsg                 blob    NOTNULL
+    blobMsg                 blob    NOT NULL
 );

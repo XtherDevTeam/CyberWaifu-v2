@@ -160,12 +160,13 @@ class DataProvider:
         Returns:
             bool: True if initialized, False otherwise.
         """
-        if len(self.db.query('select count(*) from sqlite_master where type = "table" and name = ?', ('config', ))) == 0:
+        r = self.db.query('select 1 from sqlite_master where type = "table" and name = ?', ('config', ))
+        if len(r) == 0:
             logging.getLogger(__name__).info('Running initialization script')
             with open(f'{config.BLOB_URL}/init.sql', 'r') as file:
                 self.db.runScript(file.read())
 
-        return len(self.db.query("select count(*) from config")) != 0
+        return len(self.db.query("select 1 from config")) != 0
 
     def initialize(self, userName: str, password: str, avatar: bytes | None = None) -> None:
         """

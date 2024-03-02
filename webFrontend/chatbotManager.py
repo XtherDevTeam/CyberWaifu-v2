@@ -12,10 +12,15 @@ class chatbotManager:
         self.pool = {}
         self.dataProvider = dProvider
         self.clearTh = threading.Thread(
-            target=self.clearSessonThread, args=(self, ))
-        self.clearTh.run()
+            target=self.clearSessonThread, args=())
+        self.clearTh.start()
 
     def createSession(self, charName: str) -> str:
+        # chat session reusing
+        for i in self.pool.keys():
+            if self.pool[i]['bot'].memory.getCharName() == charName:
+                return i
+
         sessionName = uuid.uuid4().hex
         sessionChatbot = instance.Chatbot(memory.Memory(
             charName, False), self.dataProvider.getUserName())
