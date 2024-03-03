@@ -160,7 +160,8 @@ class DataProvider:
         Returns:
             bool: True if initialized, False otherwise.
         """
-        r = self.db.query('select 1 from sqlite_master where type = "table" and name = ?', ('config', ))
+        r = self.db.query(
+            'select 1 from sqlite_master where type = "table" and name = ?', ('config', ))
         if len(r) == 0:
             logging.getLogger(__name__).info('Running initialization script')
             with open(f'{config.BLOB_URL}/init.sql', 'r') as file:
@@ -177,7 +178,8 @@ class DataProvider:
             password (str): User's password.
             avatarPath (str, optional): Path to the user's avatar. Defaults to f'{config.BLOB_URL}/avatar.png'.
         """
-        password = hashlib.md5(f'_@YoimiyaIsMyWaifu_{password}').hexdigest()
+        password = hashlib.md5(
+            f'_@YoimiyaIsMyWaifu_{password}'.encode('utf-8')).hexdigest()
         if avatar is None:
             with open(f'{config.BLOB_URL}/avatar.png', 'rb') as file:
                 avatar = file.read()
@@ -212,7 +214,7 @@ class DataProvider:
         if f is None:
             return None
         else:
-            return hashlib.md5(f'_@YoimiyaIsMyWaifu_{pwd}').hexdigest() == f['passwordSalted']
+            return hashlib.md5(f'_@YoimiyaIsMyWaifu_{pwd}'.encode('utf-8')).hexdigest() == f['passwordSalted']
 
     def getCharacter(self, id: int) -> None | dict[str, str | int]:
         """
@@ -235,12 +237,10 @@ class DataProvider:
             prompt (str): Character prompt.
             initalMemory (str): Initial memory for the character.
             exampleChats (str): Example chats for the character.
-            avatarPath (str, optional): Path to the character's
-
- avatar. Defaults to f'{config.BLOB_URL}/avatar_2.png'.
+            avatarPath (str, optional): Path to the character's avatar. Defaults to f'{config.BLOB_URL}/avatar_2.png'.
         """
         with open(avatarPath, 'rb') as file:
-            return self.db.query('insert into personalCharacter (charName, prompt, initialMemory, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?)',
+            return self.db.query('insert into personalCharacter (charName, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?)',
                                  (name, prompt, initalMemory, initalMemory, file.read(), exampleChats, models.DateProider()))
 
     def checkIfCharacterExist(self, name: int) -> bool:
@@ -326,7 +326,7 @@ class DataProvider:
             str | None: Latest chat history entry if exists, None otherwise.
         """
         f = self.db.query(
-            'select role, type, text from chatHistory where id = ? and text != "(OPT_NO_RESPOND)" order by timestamp desc limit 1', id, one=True)
+            'select role, type, text from chatHistory where id = ? and text != "(OPT_NO_RESPOND)" order by timestamp desc limit 1', (id, ), one=True)
         return None if f is None else self.chatMsgToTextOnly(f)
 
     def getCharacterList(self) -> int:
@@ -337,9 +337,10 @@ class DataProvider:
             int: List of characters with their latest messages.
         """
         l = self.db.query(
-            'select id, charName, creationTime from personalCharacter where id = ?')
+            'select id, charName, creationTime from personalCharacter')
         for i in range(len(l)):
             l[i]['latestMsg'] = self.fetchLatestChatHistory(l[i]['id'])
+            l[i]['latestMsg'] = 'No chats' if l[i]['latestMsg'] is None else l[i]['latestMsg']
         return l
 
     def parseMessageChain(self, chain: list[str]) -> list[dict[str | int]]:
@@ -360,32 +361,37 @@ class DataProvider:
                 r.append({
                     'type': ChatHistoryType.IMG,
                     'text': url,
-                    'timestamp': models.TimeProider()
+                    'timestamp': models.TimeProider(),
+                    'role': 'user'
                 })
             elif i.startswith('audio:'):
                 url = i[i.find(':')+1:]
                 r.append({
                     'type': ChatHistoryType.AUDIO,
                     'text': url,
-                    'timestamp': models.TimeProider()
+                    'timestamp': models.TimeProider(),
+                    'role': 'user'
                 })
             elif i.startswith('(EMO_'):
                 r.append({
                     'type': ChatHistoryType.EMOTION,
                     'text': i,
-                    'timestamp': models.TimeProider()
+                    'timestamp': models.TimeProider(),
+                    'role': 'user'
                 })
             elif i.startswith('('):
                 r.append({
                     'type': ChatHistoryType.INSTRUCTION,
                     'text': i,
-                    'timestamp': models.TimeProider()
+                    'timestamp': models.TimeProider(),
+                    'role': 'user'
                 })
             else:
                 r.append({
                     'type': ChatHistoryType.TEXT,
                     'text': i,
-                    'timestamp': models.TimeProider()
+                    'timestamp': models.TimeProider(),
+                    'role': 'user'
                 })
 
         return r
@@ -409,6 +415,7 @@ class DataProvider:
                     'type': ChatHistoryType.EMOTION,
                     'text': i,
                     'timestamp': models.TimeProider(),
+                    'role': 'model'
                 })
             elif i == '(CMD_NO_RESPONSE)':
                 pass
@@ -417,6 +424,7 @@ class DataProvider:
                     'type': ChatHistoryType.INSTRUCTION,
                     'text': i,
                     'timestamp': models.TimeProider(),
+                    'role': 'model'
                 })
             else:
                 r.append({
@@ -459,3 +467,22 @@ class DataProvider:
             return f
         else:
             return (f['contentType'], f['blobMsg'])
+
+    def saveChatHistory(self, charName: str, msgHistory: list[dict[str, int | str]]) -> None:
+        for i in msgHistory:
+            self.db.query('insert into chatHistory (charName, role, type, text, timestamp) values (?, ?, ?, ?, ?)',
+                          (charName, i['role'], i['type'], i['text'], i['timestamp']))
+
+    def fetchChatHistory(self, charId: int, offset: int = 0) -> list[dict[str, int | str]]:
+        # fetch latest 30 days history
+        time30days = 60 * 60 * 24 * 30
+        data = self.db.query('select * from chatHistory where id = ?, timestamp < ?, timestamp > ? order by timestamp desc',
+                             (charId, int(time.time() - offset * time30days), int(time.time() - offset * time30days - time30days)))
+        return data
+
+    def getCharacterAvatar(self, charId: int) -> tuple[str, bytes] | None:
+        f = self.db.query(
+            "select avatar, avatarMime from personalCharacter where id = ?", (charId, ), one=True)
+        if f is None:
+            return f
+        return (f['avatarMime'], f['avatar'])

@@ -26,6 +26,7 @@ create table personalCharacter (
     exampleChats            string NOT NULL,
     pastMemories            string NOT NULL,
     avatar                  blob NOT NULL,
+    avatarMime              string default 'image/png',
     emotionPack             integer default 0,
     creationTime            string NOT NULL
 );

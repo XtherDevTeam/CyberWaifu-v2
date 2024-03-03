@@ -16,7 +16,6 @@ app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
 dProvider = dataProvider.DataProvider(f'{config.BLOB_URL}/data.db')
 chatbotManager = chatbotManager.chatbotManager(dProvider)
 
-
 def parseRequestRange(s, flen):
     s = s[s.find('=')+1:]
     c = s.split('-')
@@ -66,6 +65,12 @@ def authenticateSession() -> int:
         return -1
 
 
+@app.after_request
+def afterRequst(f):
+    dProvider.db.db.commit()
+    return f
+
+
 @app.route("/api/v1/service/info", methods=["GET"])
 def serviceInfo():
     return {
@@ -74,7 +79,8 @@ def serviceInfo():
             'api_ver': 'v1',
             'api_name': 'Yoimiya',
             'image_model': config.USE_MODEL_IMAGE_PARSING,
-            'chat_model': config.USE_MODEL
+            'chat_model': config.USE_MODEL,
+            'authenticated_session': authenticateSession()
         },
         'status': True
     }
@@ -208,7 +214,7 @@ def attachmentUploadImage():
         return {'data': 'success', 'id': id, 'status': True}
 
 
-@app.route("/api/v1/attachment/<attachmentId>", methods=["POST"])
+@app.route("/api/v1/attachment/<attachmentId>", methods=["GET"])
 def attachmentDownload(attachmentId: str):
     if not authenticateSession():
         return {'data': 'not authenticated', 'status': False}
@@ -216,14 +222,69 @@ def attachmentDownload(attachmentId: str):
         return {'data': 'not initialized', 'status': False}
 
     mime, file = dProvider.getAttachment(attachmentId)
-    return makeFileResponse(mime, file)
+    return makeFileResponse(file, mime)
+
+
+@app.route("/api/v1/char/<id>/avatar", methods=["GET"])
+def charAvatar(id):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    mime, file = dProvider.getCharacterAvatar(id)
+    return makeFileResponse(file, mime)
+
+
+@app.route("/api/v1/char/new", methods=["POST"])
+def charNew():
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    charName = ''
+    charPrompt = ''
+    pastMemories = ''
+    exampleChats = ''
+
+    try:
+        data = flask.request.get_json()
+        charName = data['charName']
+        charPrompt = data['charPrompt']
+        pastMemories = data['pastMemories']
+        exampleChats = data['exampleChats']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    dProvider.createCharacter(charName, charPrompt, pastMemories, exampleChats)
+
+    return {
+        'data': 'success',
+        'status': 'true'
+    }
+
+
+@app.route("/api/v1/char/<id>/history/<offset>", methods=["POST"])
+def charHistory(id, offset):
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    return {
+        'data': dProvider.fetchChatHistory(id, offset),
+        'status': 'true'
+    }
 
 
 @app.route("/api/v1/initialize", methods=["POST"])
 def initialize():
     if dProvider.checkIfInitialized():
         return {'data': 'already initialized', 'status': False}
-    
+
     userName = ''
     password = ''
     try:
@@ -232,8 +293,9 @@ def initialize():
         password = data['password']
     except:
         return {'data': 'invalid form', 'status': False}
-    
+
     dProvider.initialize(userName, password)
+    flask.session['user'] = int(time.time())
     return {'data': 'success', 'status': True}
 
 

@@ -1,135 +1,264 @@
-# API Documentation for Web Service
+# CyberWaifu Web Service API Documentation
+
+## Overview
+
+The CyberWaifu Web Service provides an API for interacting with the CyberWaifu application. This documentation outlines the available endpoints, request formats, and response formats for the API.
+
+**Base URL:** `/api/v1`
 
 ## Authentication
 
-### `POST /api/v1/user/login`
+The API uses session-based authentication. Clients must include a valid session token in the request headers to access protected endpoints.
+
+## Endpoints
+
+### 1. Service Information
+
+#### `GET /service/info`
+
+**Description:** Retrieve information about the CyberWaifu service.
+
+**Request:**
+```http
+GET /api/v1/service/info
+```
+
+**Response:**
+```json
+{
+	"data": {
+		"initialized": true,
+		"api_ver": "v1",
+		"api_name": "yoimiya",
+		"image_model": 'gemini-pro-vision',
+		"chat_model": 'gemini-pro',
+		"authenticated_session": 1614755532
+	},
+	"status": true
+}
+```
+
+### 2. User Login
+
+#### `POST /user/login`
+
+**Description:** Authenticate a user and establish a session.
+
+**Request:**
+```http
+POST /api/v1/user/login
+```
+
+**Request Body:**
+```json
+{
+"password": "user_password"
+}
+```
+
+**Response:**
+```json
+{
+"data": "success",
+"status": true
+}
+```
+
+### 3. Character List
+
+#### `POST /char_list`
+
+**Description:** Get the list of characters.
+
+**Request:**
+```http
+POST /api/v1/char_list
+```
+
+**Response:**
+```json
+{
+"data": ["character1", "character2"],
+"status": true
+}
+```
+
+### 4. Chat Establishment
+
+#### `POST /chat/establish`
+
+**Description:** Start a chat session with a specified character.
+
+**Request:**
+```http
+POST /api/v1/chat/establish
+```
+
+**Request Body:**
+```json
+{
+"charName": "character_name",
+"msgChain": ["message1", "message2"]
+}
+```
+
+**Response:**
+```json
+{
+"response": "chat_response",
+"session": "session_token",
+"status": true
+}
+```
+
+### 5. Chat Message
+
+#### `POST /chat/message`
+
+**Description:** Send a message in an existing chat session.
 
-- **Description:** User login to authenticate the session.
+**Request:**
+```http
+POST /api/v1/chat/message
+```
 
-- **Parameters:**
+**Request Body:**
+```json
+{
+"session": "session_token",
+"msgChain": ["message3", "message4"]
+}
+```
 
-  - `password` (string): User password.
+**Response:**
+```json
+{
+"response": "chat_response",
+"session": "session_token",
+"status": true
+}
+```
 
-- **Response:**
+### 6. Chat Termination
 
-  - Success: `{ "data": "success", "status": true }`
+#### `POST /chat/terminate`
 
-  - Failure: `{ "data": "invalid form", "status": false }` or `{ "data": "invalid password", "status": false }`
+**Description:** Terminate an existing chat session.
 
-## Character List
+**Request:**
+```http
+POST /api/v1/chat/terminate
+```
 
-### `POST /api/v1/char_list`
+**Request Body:**
+```json
+{
+"session": "session_token"
+}
+```
 
-- **Description:** Get the list of characters.
+**Response:**
+```json
+{
+"data": "success",
+"status": true
+}
+```
 
-- **Authentication:** Requires an authenticated session.
+### 7. Audio Attachment Upload
 
-- **Response:**
+#### `POST /attachment/upload/audio`
 
-  - Success: `{ "data": [character_list], "status": true }`
+**Description:** Upload an audio attachment.
 
-  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }`
+**Request:**
 
-## Chat Establishment
+```http
+POST /api/v1/attachment/upload/audio
+```
 
-### `POST /api/v1/chat/establish`
+**Request Body (Multipart Form Data):**
+- `audio_file`: (audio file)
+  
 
-- **Description:** Establish a chat session with a character.
+**Response:**
+```json
+{
+"data": "success",
+"id": "attachment_id",
+"status": true
+}
+```
 
-- **Parameters:**
+### 8. Image Attachment Upload
 
-  - `charName` (string): Character name.
+#### `POST /attachment/upload/image`
 
-  - `msgChain` (string): Initial message chain.
+**Description:** Upload an image attachment.
 
-- **Authentication:** Requires an authenticated session.
+**Request:**
+```http
+POST /api/v1/attachment/upload/image
+```
 
-- **Response:**
+**Request Body (Multipart Form Data):**
+- `image_file`: (image file)
+  
 
-  - Success: `{ "response": "chat_response", "session": "session_id", "status": true }`
+**Response:**
+```json
+{
+"data": "success",
+"id": "attachment_id",
+"status": true
+}
+```
 
-  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid form", "status": false }`
+### 9. Attachment Download
 
-## Send Chat Message
+#### `POST /attachment/<attachmentId>`
 
-### `POST /api/v1/chat/message`
+**Description:** Download an attachment by ID.
 
-- **Description:** Send a message in an existing chat session.
+**Request:**
+```http
+POST /api/v1/attachment/attachment_id
+```
 
-- **Parameters:**
+**Response:**
+Attachment file
 
-  - `session` (string): Chat session ID.
+### 10. Initialization
 
-  - `msgChain` (string): Message chain.
+#### `POST /initialize`
 
-- **Authentication:** Requires an authenticated session.
+**Description:** Initialize the CyberWaifu service.
 
-- **Response:**
+**Request:**
+```http
+POST /api/v1/initialize
+```
 
-  - Success: `{ "response": "chat_response", "session": "session_id", "status": true }`
+**Request Body:**
+```json
+{
+"userName": "admin_user",
+"password": "admin_password"
+}
+```
 
-  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid form", "status": false }`
+**Response:**
+```json
+{
+"data": "success",
+"status": true
+}
+```
 
-## Terminate Chat Session
+## Running the Service
 
-### `POST /api/v1/chat/terminate`
+To start the CyberWaifu service, invoke the `invoke` function provided in the code. The service runs on the specified host and port as configured in `webFrontend.config`.
 
-- **Description:** Terminate an existing chat session.
-
-- **Parameters:**
-
-  - `session` (string): Chat session ID.
-
-- **Authentication:** Requires an authenticated session.
-
-- **Response:**
-
-  - Success: `{ "data": "success", "status": true }`
-
-  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid form", "status": false }`
-
-## Attachment Upload - Audio
-
-### `POST /api/v1/attachment/upload/audio`
-
-- **Description:** Upload an audio attachment.
-
-- **Authentication:** Requires an authenticated session.
-
-- **Response:**
-
-  - Success: `{ "data": "success", "id": "attachment_id", "status": true }`
-
-  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid mimetype expect 'audio/'", "status": false }`
-
-## Attachment Upload - Image
-
-### `POST /api/v1/attachment/upload/image`
-
-- **Description:** Upload an image attachment.
-
-- **Authentication:** Requires an authenticated session.
-
-- **Response:**
-
-  - Success: `{ "data": "success", "id": "attachment_id", "status": true }`
-
-  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }` or `{ "data": "invalid mimetype expect 'image/'", "status": false }`
-
-## Attachment Download
-
-### `POST /api/v1/attachment/<attachmentId>`
-
-- **Description:** Download an attachment.
-
-- **Parameters:**
-
-  - `attachmentId` (string): Attachment ID.
-
-- **Authentication:** Requires an authenticated session.
-
-- **Response:**
-
-  - Success: Returns the file.
-
-  - Failure: `{ "data": "not authenticated", "status": false }` or `{ "data": "not initialized", "status": false }`
+```python
+invoke()
+```

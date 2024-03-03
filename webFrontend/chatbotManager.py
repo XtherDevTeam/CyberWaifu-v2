@@ -82,6 +82,8 @@ class chatbotManager:
 
     def terminateSession(self, sessionName: str) -> None:
         if sessionName in self.pool:
+            charName = self.pool[sessionName]['bot'].memory.getCharName()
+            self.dataProvider.saveChatHistory(charName, self.getSessionHistory(sessionName))
             self.pool[sessionName]['bot'].terminateChat()
             del self.pool[sessionName]
         else:
