@@ -1,4 +1,6 @@
 import threading
+
+from numpy import char
 import dataProvider
 import memory
 import uuid
@@ -18,17 +20,19 @@ class chatbotManager:
     def createSession(self, charName: str) -> str:
         # chat session reusing
         for i in self.pool.keys():
-            if self.pool[i]['bot'].memory.getCharName() == charName:
+            if self.pool[i]['charName'] == charName:
                 return i
 
         sessionName = uuid.uuid4().hex
-        sessionChatbot = instance.Chatbot(memory.Memory(
-            charName, False), self.dataProvider.getUserName())
+        sessionChatbot = instance.Chatbot(memory.Memory(self.dataProvider, charName), self.dataProvider.getUserName())
         self.pool[sessionName] = {
             'expireTime': time.time() + 60 * 10,
             'bot': sessionChatbot,
-            'history': []
+            'history': [],
+            'charName': charName
         }
+        
+        return sessionName
 
     def getSession(self, sessionName: str) -> instance.Chatbot:
         if sessionName in self.pool:
@@ -59,10 +63,11 @@ class chatbotManager:
     def beginChat(self, sessionName: str, msgChain: list[str]) -> list[dict[str, str | int | bool]]:
         if sessionName in self.pool:
             f = self.dataProvider.parseMessageChain(msgChain)
-            self.appendToSessionHistory(f)
+            self.appendToSessionHistory(sessionName, f)
             result = self.dataProvider.parseModelResponse(self.getSession(
                 sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f)))
-            self.appendToSessionHistory(result)
+            self.appendToSessionHistory(sessionName, result)
+            self.dataProvider.saveChatHistory(self.pool[sessionName]['charName'], f + result)
             return result
         else:
             raise exceptions.SessionNotFound(
@@ -71,10 +76,20 @@ class chatbotManager:
     def sendMessage(self, sessionName: str, msgChain: list[str]) -> list[dict[str, str | int | bool]]:
         if sessionName in self.pool:
             f = self.dataProvider.parseMessageChain(msgChain)
-            self.appendToSessionHistory(f)
-            result = self.dataProvider.parseModelResponse(self.getSession(
-                sessionName).chat(self.dataProvider.convertMessageHistoryToModelInput(f)))
-            self.appendToSessionHistory(result)
+            self.appendToSessionHistory(sessionName, f)
+            result = None
+            retries = 0
+            while result == None:
+                try:
+                    result = self.dataProvider.parseModelResponse(self.getSession(
+                        sessionName).chat(self.dataProvider.convertMessageHistoryToModelInput(f)))
+                except Exception as e:
+                    retries += 1
+                    if retries > dataProvider.config.MAX_CHAT_RETRY_COUNT:
+                        raise exceptions.MaxRetriesExceeded(f'{__name__}: Invalid response. Max retries exceeded.')
+                    continue
+            self.appendToSessionHistory(sessionName, result)
+            self.dataProvider.saveChatHistory(self.pool[sessionName]['charName'], f + result)
             return result
         else:
             raise exceptions.SessionNotFound(
@@ -83,7 +98,6 @@ class chatbotManager:
     def terminateSession(self, sessionName: str) -> None:
         if sessionName in self.pool:
             charName = self.pool[sessionName]['bot'].memory.getCharName()
-            self.dataProvider.saveChatHistory(charName, self.getSessionHistory(sessionName))
             self.pool[sessionName]['bot'].terminateChat()
             del self.pool[sessionName]
         else:
@@ -92,7 +106,7 @@ class chatbotManager:
 
     def clearSessonThread(self) -> None:
         while True:
-            for i in self.pool.keys():
+            for i in [k for k in self.pool.keys()]:
                 if time.time() > self.pool[i]['expireTime']:
                     self.terminateSession(i)
 

@@ -6,10 +6,25 @@ Provides packages for model operating
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
+from google.generativeai import configure as gemini_configure
+import google.generativeai as genai
 import transformers
 import torch
 import config
 import time
+import os
+
+from google_login import load_creds
+
+
+def initialize():
+    if config.AUTNENTICATE_METHOD == 'oauth':
+        os.environ.pop('GOOGLE_API_KEY')
+        gemini_configure(credentials=load_creds(), api_key=None)
+        print('Authenticated Google OAuth 2 session.')
+        print('Available base models:', [
+            m.name for m in genai.list_tuned_models()])
+        print('My tuned models:', [m.name for m in genai.list_tuned_models()])
 
 
 # No need to handle by users, so not in config.py
@@ -22,8 +37,10 @@ MODEL_SAFETY_SETTING = {
 
 
 # google did not provide the fucking interface for counting token.
+# well, now I get it
 def TokenCounter(string: str) -> int:
-    return len(string.strip().split(' '))
+    return ChatGoogleGenerativeAI(model=config.USE_MODEL).get_num_tokens(string)
+    # return len(string.strip().split(' '))
 
 
 def TimeProider() -> str:
@@ -37,18 +54,17 @@ def DateProider() -> str:
 def PreprocessPrompt(originalPrompt: str, tVars):
     for i in tVars:
         originalPrompt = originalPrompt.replace('{{' + i + '}}', tVars[i])
-
     return originalPrompt
 
 
 def BaseModelProvider() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL, convert_system_message_to_human=True,
-        safety_settings=MODEL_SAFETY_SETTING)
+        model=config.USE_MODEL, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING, google_api_key=None, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
 
 
 def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
-    llm = BaseModelProvider()
+    llm = ChatGoogleGenerativeAI(
+        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
     preprocessed = PreprocessPrompt(
         config.MEMORY_MERGING_PROMPT,
         {
@@ -64,7 +80,7 @@ def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
 
 def ImageParsingModelProvider():
     return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING)
+        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
 
 
 def ImageParsingModel(image: str) -> str:

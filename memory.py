@@ -21,7 +21,8 @@ class Memory:
         # create if not exist
         self.dataProvider = dProvider
         # read character messages
-        self.char = self.dataProvider.getCharacter(self.dataProvider.getCharacterId())
+        print(char, self.dataProvider.getCharacterId(char), '114514')
+        self.char = self.dataProvider.getCharacter(self.dataProvider.getCharacterId(char))
 
     def getExampleChats(self) -> str:
         return self.char['exampleChats']

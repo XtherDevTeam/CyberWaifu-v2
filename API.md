@@ -30,8 +30,8 @@ GET /api/v1/service/info
 		"initialized": true,
 		"api_ver": "v1",
 		"api_name": "yoimiya",
-		"image_model": 'gemini-pro-vision',
-		"chat_model": 'gemini-pro',
+		"image_model": "gemini-pro-vision",
+		"chat_model": "gemini-pro-latest",
 		"authenticated_session": 1614755532
 	},
 	"status": true

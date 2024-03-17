@@ -2,7 +2,8 @@
 
 1. First initialize conda environment by executing `initialize.sh`
 2. Attain an api key from [Google AI Studio](https://aistudio.google.com)
-3. Add your api key into project by editing `config.py`
+3. If you are going to use a fine-tuning model, finish these [steps](https://ai.google.dev/palm_docs/oauth_quickstart?hl=zh-cn) and copy the `client_secret.json` under the project root directory.
+4. Add your api key into project by editing `config.py`
 
 # Add a new character
 

@@ -12,7 +12,11 @@ An Character Roleplay Chatbot based on Google Gemini Pro.
 
 - 目前可用的前端只有 `cmdline interfere frontend`，点击 [此处](Usage.md) 查看教程。
 
-**NOTES:** 该项目曾试验性地提供了 `YiriMirai` 的 `Python Binding`，很遗憾，由于 `mirai` 登陆年久失修，作者并未能成功检验。
+**NOTES:** 
+
+1. 该项目曾试验性地提供了 `YiriMirai` 的 `Python Binding`，很遗憾，由于 `mirai` 登陆年久失修，作者并未能成功检验。
+
+2. 该项目试验性地提供了对于 `fine-tune models` 的支持，由于不支持多轮对话，以遗憾告终。
 
 ### 原理
 
@@ -20,3 +24,8 @@ An Character Roleplay Chatbot based on Google Gemini Pro.
 
 - 每次对话会初始化一个 `conversation.ConversationMemory` 对象，用于存储对话记忆，在对话结束后会调用模型以角色为第一人称总结对话内容，并调用模型合并到角色记忆，而不是将对话内容全部继承至下一次对话。
 - 角色配置分为角色记忆、角色 `Prompt` 和角色名称，这些信息会在初始化对话阶段作为 `SystemMessage` 传入模型。
+
+# Tasks
+
+- 完善前端
+- DataProvider 改单例

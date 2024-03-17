@@ -7,6 +7,7 @@ import webFrontend.chatbotManager as chatbotManager
 import dataProvider
 import config
 import webFrontend.config
+import exceptions
 from io import BytesIO
 
 app = flask.Flask(__name__)
@@ -80,7 +81,8 @@ def serviceInfo():
             'api_name': 'Yoimiya',
             'image_model': config.USE_MODEL_IMAGE_PARSING,
             'chat_model': config.USE_MODEL,
-            'authenticated_session': authenticateSession()
+            'authenticated_session': authenticateSession(),
+            'session_username': dProvider.getUserName()
         },
         'status': True
     }
@@ -130,7 +132,9 @@ def chatEstablish():
         return {'data': 'invalid form', 'status': False}
 
     session = chatbotManager.createSession(charName)
-    return {'response': chatbotManager.beginChat(session, beginMsg),
+    if len(beginMsg) == 1 and beginMsg[0].strip() == '':
+        return {'status': False, 'data': 'Null message'}
+    return {'response': dProvider.parseMessageChain(beginMsg) + chatbotManager.beginChat(session, beginMsg),
             'session': session,
             'status': True}
 
@@ -151,9 +155,14 @@ def chatMessage():
     except:
         return {'data': 'invalid form', 'status': False}
 
-    return {'response': chatbotManager.sendMessage(session, msgChain),
-            'session': session,
-            'status': True}
+    if len(msgChain) == 1 and msgChain[0].strip() == '':
+        return {'status': False, 'data': 'Null message'}
+    try:
+        return {'response': dProvider.parseMessageChain(msgChain) + chatbotManager.sendMessage(session, msgChain),
+                'session': session,
+                'status': True}
+    except exceptions.SessionNotFound as e:
+        return {'status': False, 'data': str(e)}
 
 
 @app.route("/api/v1/chat/terminate", methods=["POST"])
@@ -275,7 +284,7 @@ def charHistory(id, offset):
         return {'data': 'not initialized', 'status': False}
 
     return {
-        'data': dProvider.fetchChatHistory(id, offset),
+        'data': dProvider.fetchChatHistory(int(id), int(offset)),
         'status': 'true'
     }
 

@@ -30,12 +30,14 @@ class Chatbot:
 
         msg = self.llm.invoke(self.conversation.getConversation())
         self.conversation.storeBotInput(msg)
+        print(msg.content)
         return msg.content
 
     def chat(self, userInput: str) -> str:
         self.conversation.storeUserInput(HumanMessage(userInput))
         msg = self.llm.invoke(self.conversation.getConversation())
         self.conversation.storeBotInput(msg)
+        print(msg.content)
         return msg.content
 
     def termination(self) -> None:

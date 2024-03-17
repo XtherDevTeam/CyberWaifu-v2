@@ -7,3 +7,4 @@ flask
 flask_cors
 transformers
 torch
+google_auth_oauthlib
