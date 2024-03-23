@@ -1,264 +1,189 @@
 # CyberWaifu Web Service API Documentation
 
-## Overview
+## Base URL
 
-The CyberWaifu Web Service provides an API for interacting with the CyberWaifu application. This documentation outlines the available endpoints, request formats, and response formats for the API.
-
-**Base URL:** `/api/v1`
-
-## Authentication
-
-The API uses session-based authentication. Clients must include a valid session token in the request headers to access protected endpoints.
+The base URL for all endpoints is `/api/v1`.
 
 ## Endpoints
 
-### 1. Service Information
+### 1. **Service Information**
+- **Endpoint**: `/service/info`
+- **Method**: GET
+- **Description**: Retrieves information about the CyberWaifu Web Service API.
+- **Response**: 
+    - `data`: Information about the service including initialization status, API version, name, image model usage, chat model usage, authenticated session status, and session username.
+    - `status`: Indicates the success or failure of the request.
 
-#### `GET /service/info`
+### 2. **User Login**
+- **Endpoint**: `/user/login`
+- **Method**: POST
+- **Description**: Logs in a user to the Yoimiya service.
+- **Request Body**:
+    - `password`: Password of the user.
+- **Response**: 
+    - `data`: Message indicating success or failure.
+    - `status`: Indicates the success or failure of the request.
 
-**Description:** Retrieve information about the CyberWaifu service.
+### 3. **Character List**
+- **Endpoint**: `/char_list`
+- **Method**: POST
+- **Description**: Retrieves the list of characters.
+- **Response**: 
+    - `data`: List of characters.
+    - `status`: Indicates the success or failure of the request.
 
-**Request:**
-```http
-GET /api/v1/service/info
-```
+### 4. **Establish Chat**
+- **Endpoint**: `/chat/establish`
+- **Method**: POST
+- **Description**: Establishes a chat session with a character.
+- **Request Body**:
+    - `charName`: Name of the character.
+    - `msgChain`: Message chain to begin the chat.
+- **Response**: 
+    - `response`: Response from the chatbot.
+    - `session`: Session ID.
+    - `status`: Indicates the success or failure of the request.
 
-**Response:**
-```json
-{
-	"data": {
-		"initialized": true,
-		"api_ver": "v1",
-		"api_name": "yoimiya",
-		"image_model": "gemini-pro-vision",
-		"chat_model": "gemini-pro-latest",
-		"authenticated_session": 1614755532
-	},
-	"status": true
-}
-```
+### 5. **Send Chat Message**
+- **Endpoint**: `/chat/message`
+- **Method**: POST
+- **Description**: Sends a message in an active chat session.
+- **Request Body**:
+    - `session`: Session ID.
+    - `msgChain`: Message chain.
+- **Response**: 
+    - `response`: Response from the chatbot.
+    - `session`: Session ID.
+    - `status`: Indicates the success or failure of the request.
 
-### 2. User Login
+### 6. **Terminate Chat**
+- **Endpoint**: `/chat/terminate`
+- **Method**: POST
+- **Description**: Terminates an active chat session.
+- **Request Body**:
+    - `session`: Session ID.
+- **Response**: 
+    - `data`: Message indicating success.
+    - `status`: Indicates the success or failure of the request.
 
-#### `POST /user/login`
+### 7. **Upload Audio Attachment**
+- **Endpoint**: `/attachment/upload/audio`
+- **Method**: POST
+- **Description**: Uploads an audio attachment.
+- **Response**: 
+    - `data`: Message indicating success.
+    - `id`: ID of the uploaded attachment.
+    - `status`: Indicates the success or failure of the request.
 
-**Description:** Authenticate a user and establish a session.
+### 8. **Upload Image Attachment**
+- **Endpoint**: `/attachment/upload/image`
+- **Method**: POST
+- **Description**: Uploads an image attachment.
+- **Response**: 
+    - `data`: Message indicating success.
+    - `id`: ID of the uploaded attachment.
+    - `status`: Indicates the success or failure of the request.
 
-**Request:**
-```http
-POST /api/v1/user/login
-```
+### 9. **Download Attachment**
+- **Endpoint**: `/attachment/<attachmentId>`
+- **Method**: GET
+- **Description**: Downloads an attachment by ID.
+- **Response**: File data.
 
-**Request Body:**
-```json
-{
-"password": "user_password"
-}
-```
+### 10. **Character Avatar**
+- **Endpoint**: `/char/<id>/avatar`
+- **Method**: GET
+- **Description**: Retrieves the avatar of a character by ID.
+- **Response**: File data.
 
-**Response:**
-```json
-{
-"data": "success",
-"status": true
-}
-```
+### 11. **Create New Character**
+- **Endpoint**: `/char/new`
+- **Method**: POST
+- **Description**: Creates a new character.
+- **Request Body**:
+    - `charName`: Name of the character.
+    - `charPrompt`: Character prompt.
+    - `pastMemories`: Past memories of the character.
+    - `exampleChats`: Example chats for the character.
+- **Response**: 
+    - `data`: Message indicating success.
+    - `status`: Indicates the success or failure of the request.
 
-### 3. Character List
+### 12. **Fetch Character Chat History**
+- **Endpoint**: `/char/<id>/history/<offset>`
+- **Method**: POST
+- **Description**: Fetches the chat history of a character.
+- **Response**: 
+    - `data`: Chat history.
+    - `status`: Indicates the success or failure of the request.
 
-#### `POST /char_list`
+### 13. **Get Avatar**
+- **Endpoint**: `/avatar`
+- **Method**: POST
+- **Description**: Retrieves the avatar.
+- **Response**: File data.
 
-**Description:** Get the list of characters.
+### 14. **Create Sticker Set**
+- **Endpoint**: `/sticker/create_set`
+- **Method**: POST
+- **Description**: Creates a new sticker set.
+- **Request Body**:
+    - `setName`: Name of the sticker set.
+- **Response**: 
+    - `status`: Indicates the success or failure of the request.
 
-**Request:**
-```http
-POST /api/v1/char_list
-```
+### 15. **Delete Sticker Set**
+- **Endpoint**: `/sticker/delete_set`
+- **Method**: POST
+- **Description**: Deletes a sticker set.
+- **Request Body**:
+    - `setId`: ID of the sticker set.
+- **Response**: 
+    - `status`: Indicates the success or failure of the request.
 
-**Response:**
-```json
-{
-"data": ["character1", "character2"],
-"status": true
-}
-```
+### 16. **Add Sticker to Set**
+- **Endpoint**: `/sticker/add`
+- **Method**: POST
+- **Description**: Adds a sticker to a set.
+- **Query Parameters**:
+    - `setId`: ID of the sticker set.
+    - `stickerName`: Name of the sticker.
+- **Response**: 
+    - `status`: Indicates the success or failure of the request.
 
-### 4. Chat Establishment
+### 17. **Delete Sticker**
+- **Endpoint**: `/sticker/delete`
+- **Method**: POST
+- **Description**: Deletes a sticker.
+- **Request Body**:
+    - `stickerId`: ID of the sticker.
+- **Response**: 
+    - `status`: Indicates the success or failure of the request.
 
-#### `POST /chat/establish`
+### 18. **Get Sticker**
+- **Endpoint**: `/sticker/get`
+- **Method**: GET
+- **Description**: Retrieves a sticker.
+- **Query Parameters**:
+    - `setId`: ID of the sticker set.
+    - `name`: Name of the sticker.
+- **Response**: File data.
 
-**Description:** Start a chat session with a specified character.
+### 19. **List Stickers**
+- **Endpoint**: `/sticker/list`
+- **Method**: GET
+- **Description**: Retrieves a list of stickers.
+- **Response**: 
+    - `data`: List of stickers.
+    - `status`: Indicates the success or failure of the request.
 
-**Request:**
-```http
-POST /api/v1/chat/establish
-```
-
-**Request Body:**
-```json
-{
-"charName": "character_name",
-"msgChain": ["message1", "message2"]
-}
-```
-
-**Response:**
-```json
-{
-"response": "chat_response",
-"session": "session_token",
-"status": true
-}
-```
-
-### 5. Chat Message
-
-#### `POST /chat/message`
-
-**Description:** Send a message in an existing chat session.
-
-**Request:**
-```http
-POST /api/v1/chat/message
-```
-
-**Request Body:**
-```json
-{
-"session": "session_token",
-"msgChain": ["message3", "message4"]
-}
-```
-
-**Response:**
-```json
-{
-"response": "chat_response",
-"session": "session_token",
-"status": true
-}
-```
-
-### 6. Chat Termination
-
-#### `POST /chat/terminate`
-
-**Description:** Terminate an existing chat session.
-
-**Request:**
-```http
-POST /api/v1/chat/terminate
-```
-
-**Request Body:**
-```json
-{
-"session": "session_token"
-}
-```
-
-**Response:**
-```json
-{
-"data": "success",
-"status": true
-}
-```
-
-### 7. Audio Attachment Upload
-
-#### `POST /attachment/upload/audio`
-
-**Description:** Upload an audio attachment.
-
-**Request:**
-
-```http
-POST /api/v1/attachment/upload/audio
-```
-
-**Request Body (Multipart Form Data):**
-- `audio_file`: (audio file)
-  
-
-**Response:**
-```json
-{
-"data": "success",
-"id": "attachment_id",
-"status": true
-}
-```
-
-### 8. Image Attachment Upload
-
-#### `POST /attachment/upload/image`
-
-**Description:** Upload an image attachment.
-
-**Request:**
-```http
-POST /api/v1/attachment/upload/image
-```
-
-**Request Body (Multipart Form Data):**
-- `image_file`: (image file)
-  
-
-**Response:**
-```json
-{
-"data": "success",
-"id": "attachment_id",
-"status": true
-}
-```
-
-### 9. Attachment Download
-
-#### `POST /attachment/<attachmentId>`
-
-**Description:** Download an attachment by ID.
-
-**Request:**
-```http
-POST /api/v1/attachment/attachment_id
-```
-
-**Response:**
-Attachment file
-
-### 10. Initialization
-
-#### `POST /initialize`
-
-**Description:** Initialize the CyberWaifu service.
-
-**Request:**
-```http
-POST /api/v1/initialize
-```
-
-**Request Body:**
-```json
-{
-"userName": "admin_user",
-"password": "admin_password"
-}
-```
-
-**Response:**
-```json
-{
-"data": "success",
-"status": true
-}
-```
-
-## Running the Service
-
-To start the CyberWaifu service, invoke the `invoke` function provided in the code. The service runs on the specified host and port as configured in `webFrontend.config`.
-
-```python
-invoke()
-```
+### 20. **Initialize**
+- **Endpoint**: `/initialize`
+- **Method**: POST
+- **Description**: Initializes the Yoimiya service.
+- **Request Body**:
+    - `userName`: Username for initialization.
+    - `password`: Password for initialization.
+- **Response**: 
+    - `data`: Message indicating success.
+    - `status`: Indicates the success or failure of the request.

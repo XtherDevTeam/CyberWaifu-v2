@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import sqlite3
 import logging
 import time
@@ -183,8 +184,8 @@ class DataProvider:
             with open(f'{config.BLOB_URL}/avatar.png', 'rb') as file:
                 avatar = file.read()
 
-        self.db.query('insert into config (userName, passwordSalted, avatar) values (?, ?, ?)',
-                      (userName, password, avatar))
+        self.db.query('insert into config (userName, passwordSalted, avatar, avatarMime) values (?, ?, ?, ?)',
+                      (userName, password, avatar, 'image/png'))
 
     def getUserName(self) -> None | str:
         """
@@ -298,23 +299,14 @@ class DataProvider:
         Returns:
             str: Text-only representation of the chat message.
         """
+        trans = {'angry': '😡', 'guility': '🙁', 'happy': '😊', 'sad': '😢', 'awkward': '😳'}
+        for i in trans:
+            f['text'] = f['text'].replace(f'({i})', trans[i])
+            
         if f['type'] == ChatHistoryType.TEXT:
             return f['text']
         elif f['type'] == ChatHistoryType.IMG:
             return '🌄'
-        elif f['type'] == ChatHistoryType.EMOTION:
-            if f['text'] == '(EMO_ANGRY)':
-                return '😡'
-            elif f['text'] == '(EMO_GUILITY)':
-                return '🙁'
-            elif f['text'] == '(EMO_HAPPY)':
-                return '😊'
-            elif f['text'] == '(EMO_SAD)':
-                return '😢'
-            elif f['text'] == '(EMO_NOT_UNDERSTAND)':
-                return '🙋'
-            else:
-                return '？'
 
     def fetchLatestChatHistory(self, id: int) -> str | None:
         """
@@ -412,31 +404,12 @@ class DataProvider:
         r: list[dict[str | int]] = []
         for i in l:
             i = i.strip()
-            if i == '':
-                continue
-            if i.startswith('(EMO_'):
-                r.append({
-                    'type': ChatHistoryType.EMOTION,
-                    'text': i,
-                    'timestamp': int(time.time()),
-                    'role': 'model'
-                })
-            elif i == '(CMD_NO_RESPONSE)':
-                pass
-            elif i == '(CMD_EXIT_NORMAL)' or i == '(CMD_EXIT_ROLE)':
-                r.append({
-                    'type': ChatHistoryType.INSTRUCTION,
-                    'text': i,
-                    'timestamp': int(time.time()),
-                    'role': 'model'
-                })
-            else:
-                r.append({
-                    'type': ChatHistoryType.TEXT,
-                    'text': i,
-                    'timestamp': int(time.time()),
-                    'role': 'model'
-                })
+            r.append({
+                'type': ChatHistoryType.TEXT,
+                'text': i,
+                'timestamp': int(time.time()),
+                'role': 'model'
+            })
 
         return r
 
@@ -447,9 +420,9 @@ class DataProvider:
             if i['type'] == ChatHistoryType.TEXT or i['type'] == ChatHistoryType.EMOTION:
                 r += i['text'].strip() + '\n'
             elif i['type'] == ChatHistoryType.IMG:
-                r += f'(CMD_IMAGE {models.ImageParsingModel(i['text'])})\n'
+                r += f'(image {models.ImageParsingModel(i['text'])})\n'
             elif i['type'] == ChatHistoryType.AUDIO:
-                r += f'(CMD_AUDIO {models.AudioToTextModel(i['text'])})\n'
+                r += f'(audio {models.AudioToTextModel(i['text'])})\n'
 
         return r
 
@@ -493,3 +466,42 @@ class DataProvider:
         if f is None:
             return f
         return (f['avatarMime'], f['avatar'])
+    
+    def getAvatar(self) -> tuple[str, bytes] | None:
+        f = self.db.query(
+            "select avatar, avatarMime from config", (), one=True)
+        if f is None:
+            return f
+        
+        return (f['avatarMime'], f['avatar'])
+    
+    def createStickerSet(self, name: str) -> None:
+        self.db.query("insert into stickerSets (setName) values (?)", (name))
+    
+    def addSticker(self, setId: int, stickerName: str, sticker: tuple[str, bytes]) -> None:
+        self.db.query("insert into stickers (setId, name, image, mime) values (?, ?, ?, ?)", (setId, stickerName, sticker[1], sticker[0]))
+            
+    def deleteSticker(self, id: str) -> None:
+        self.db.query("delete from stickers where id = ?", (id, ))
+            
+    def deleteStickerSet(self, name: str) -> None:
+        self.db.query("delete from stickerSets where setName = ?", (name, ))
+        self.db.query("delete from stickers where setName = ?", (name, ))
+        
+    def getSticker(self, setId: int, name: str) -> tuple[str, bytes]:
+        d = self.db.query("select mime, image from stickers where name = ? and setName = ?", (name, setId), one=True)
+        if d is None:
+            raise exceptions.StickerNotFound(f'{__name__}: Sticker {setId} of sticker set {setId} not exist')
+        return (d['mime'], d['image'])
+    
+    def getStickerList(self) -> list[dict[str, str | int]]:
+        d = self.db.query("select distinct setId, id, name from stickers group by setId")
+        r = []
+        for i in d:
+            setName = self.db.query("select setName from stickerSets where id = ?", (i['setId'], ), one=True)
+            r.append({
+                'id': i['setId'],
+                'setName': setName['setName'],
+                'previewSticker': i['name'],
+            })
+        return r

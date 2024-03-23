@@ -285,7 +285,128 @@ def charHistory(id, offset):
 
     return {
         'data': dProvider.fetchChatHistory(int(id), int(offset)),
-        'status': 'true'
+        'status': True
+    }
+    
+    
+@app.route("/api/v1/avatar", methods=["POST"])
+def avatar():
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    avatarBlob, mime = dProvider.getAvatar()
+    return makeFileResponse(avatarBlob, mime)
+
+
+@app.route("/api/v1/sticker/create_set", methods=["POST"])
+def stickerAddSet():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    setName = ''
+    try:
+        setName = flask.request.json['setName']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    dProvider.createStickerSet(setName)
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/delete_set", methods=["POST"])
+def stickerAddSet():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    setId = 0
+    try:
+        setId = flask.request.json['setId']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    dProvider.deleteStickerSet(setId)
+    return {'status': True}
+
+@app.route("/api/v1/sticker/add", methods=["POST"])
+def stickerAdd():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    setId = ''
+    stickerName = ''
+    try:
+        setId = flask.request.args['setId']
+        stickerName = flask.request.args['stickerName']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    try:
+        file = BytesIO()
+        flask.request.files[0].save(file)
+        file.seek(0)
+        dProvider.addSticker(setId, stickerName, (flask.request.files[0].mimetype, file.read()))
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/delete", methods=["POST"])
+def stickerDelete():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    stickerId = ''
+    try:
+        stickerId = flask.request.json['stickerId']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    dProvider.deleteSticker(stickerId)
+    
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/get", methods=["GET"])
+def stickerDelete():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    setId = 0
+    stickerName = ''
+    try:
+        setId = flask.request.args['setId']
+        stickerName = flask.request.args['name']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    mime, blob = dProvider.getSticker(setId, stickerName)
+    return makeFileResponse(mime, blob)
+
+
+@app.route("/api/v1/sticker/list", methods=["GET"])
+def stickerDelete():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    return {
+        'data': dProvider.getStickerList(),
+        'status': True
     }
 
 

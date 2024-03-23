@@ -2,7 +2,7 @@
 
 [前情提要](https://www.bilibili.com/video/BV1rZ421B79N)
 
-一个基于 Google Gemini Pro 模型的角色模拟聊天机器人。
+一个基于 Langchain 使用 Google Gemini Pro 模型的角色模拟聊天机器人。
 
 An Character Roleplay Chatbot based on Google Gemini Pro.
 
@@ -15,8 +15,9 @@ An Character Roleplay Chatbot based on Google Gemini Pro.
 **NOTES:** 
 
 1. 该项目曾试验性地提供了 `YiriMirai` 的 `Python Binding`，很遗憾，由于 `mirai` 登陆年久失修，作者并未能成功检验。
-
 2. 该项目试验性地提供了对于 `fine-tune models` 的支持，由于不支持多轮对话，以遗憾告终。
+3. 目前 Google 仍未开放对 `Gemini 1.5 Pro` 的 API 访问，由于 `Gemini 1.0 Pro` 能力的欠缺，这对于该项目是一个极大的遗憾。
+4. `web-interfere-api` 现已趋于可用，可配合 `CyberWaifu-V2 Mobile` 使用
 
 ### 原理
 

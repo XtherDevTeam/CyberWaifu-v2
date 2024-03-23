@@ -3,7 +3,7 @@ conversation.py
 Provides packages for model operating
 """
 
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
 from google.generativeai import configure as gemini_configure
@@ -40,7 +40,6 @@ MODEL_SAFETY_SETTING = {
 # well, now I get it
 def TokenCounter(string: str) -> int:
     return ChatGoogleGenerativeAI(model=config.USE_MODEL).get_num_tokens(string)
-    # return len(string.strip().split(' '))
 
 
 def TimeProider() -> str:
@@ -59,12 +58,22 @@ def PreprocessPrompt(originalPrompt: str, tVars):
 
 def BaseModelProvider() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING, google_api_key=None, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
+        model=config.USE_MODEL,
+        convert_system_message_to_human=True,
+        temperature=0.9,
+        safety_settings=MODEL_SAFETY_SETTING,
+        google_api_key=None,
+        credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
 
 
 def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
     llm = ChatGoogleGenerativeAI(
-        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
+        model=config.USE_MODEL_IMAGE_PARSING,
+        convert_system_message_to_human=True,
+        temperature=0.9,
+        safety_settings=MODEL_SAFETY_SETTING,
+        credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
+    
     preprocessed = PreprocessPrompt(
         config.MEMORY_MERGING_PROMPT,
         {
@@ -80,7 +89,7 @@ def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
 
 def ImageParsingModelProvider():
     return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=0.7, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
+        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=1, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
 
 
 def ImageParsingModel(image: str) -> str:

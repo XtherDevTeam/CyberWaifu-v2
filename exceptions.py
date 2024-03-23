@@ -9,3 +9,7 @@ class SessionNotFound(RuntimeError):
 class MaxRetriesExceeded(RuntimeError):
     def __init__(self, s) -> None:
         super().__init__(s)
+        
+class StickerNotFound(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)
