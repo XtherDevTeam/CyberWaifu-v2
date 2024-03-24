@@ -11,12 +11,13 @@ CHARACTERS_PATH = os.path.join('.', 'characters')
 GOOGLE_API_TOKEN = "MayAllTheBeautyBeBlessed"
 
 # the model going to be used in the chat
-USE_MODEL = "gemini-1.0-pro-latest"
+# fk google. wasted 2 days of my life to find out where is this api and found this shit came out after 1 week.
+USE_MODEL = "models/gemini-pro"
 
 # the model going to be used in the image parsing
 USE_MODEL_IMAGE_PARSING = "gemini-pro-vision"
 
-AUTNENTICATE_METHOD = 'oauth' if USE_MODEL.startswith('tunedModels') else 'apikey'
+AUTHENTICATE_METHOD = 'oauth' if USE_MODEL.startswith('tunedModels') else 'apikey'
 
 # how many times chatbotManager will retry when receive an invalid response
 MAX_CHAT_RETRY_COUNT = 0

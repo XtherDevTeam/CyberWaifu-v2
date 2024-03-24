@@ -171,7 +171,7 @@ The base URL for all endpoints is `/api/v1`.
 
 ### 19. **List Stickers**
 - **Endpoint**: `/sticker/list`
-- **Method**: GET
+- **Method**: POST
 - **Description**: Retrieves a list of stickers.
 - **Response**: 
     - `data`: List of stickers.

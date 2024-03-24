@@ -476,7 +476,10 @@ class DataProvider:
         return (f['avatarMime'], f['avatar'])
     
     def createStickerSet(self, name: str) -> None:
-        self.db.query("insert into stickerSets (setName) values (?)", (name))
+        self.db.query("insert into stickerSets (setName) values (?)", (name, ))
+        
+    def renameStickerSet(self, setId: int, newSetName: str) -> None:
+        self.db.query("update stickerSets set setName = ? where id = ?", (newSetName, setId))
     
     def addSticker(self, setId: int, stickerName: str, sticker: tuple[str, bytes]) -> None:
         self.db.query("insert into stickers (setId, name, image, mime) values (?, ?, ?, ?)", (setId, stickerName, sticker[1], sticker[0]))
@@ -489,19 +492,22 @@ class DataProvider:
         self.db.query("delete from stickers where setName = ?", (name, ))
         
     def getSticker(self, setId: int, name: str) -> tuple[str, bytes]:
-        d = self.db.query("select mime, image from stickers where name = ? and setName = ?", (name, setId), one=True)
+        d = self.db.query("select mime, image from stickers where name = ? and setId = ?", (name, setId), one=True)
         if d is None:
             raise exceptions.StickerNotFound(f'{__name__}: Sticker {setId} of sticker set {setId} not exist')
         return (d['mime'], d['image'])
     
-    def getStickerList(self) -> list[dict[str, str | int]]:
-        d = self.db.query("select distinct setId, id, name from stickers group by setId")
+    def getStickerSetList(self) -> list[dict[str, str | int]]:
+        d = self.db.query('select * from stickerSets')
         r = []
         for i in d:
-            setName = self.db.query("select setName from stickerSets where id = ?", (i['setId'], ), one=True)
+            n = self.db.query('select * from stickers where setId = ? limit 1', (i['id'], ), one=True)
             r.append({
-                'id': i['setId'],
-                'setName': setName['setName'],
-                'previewSticker': i['name'],
+                'id': i['id'],
+                'setName': i['setName'],
+                'previewSticker': n['name'] if n is not None else 'none'
             })
         return r
+    
+    def getStickerList(self, setId: int) -> list[dict[str, str | int]]:
+        return self.db.query('select id, setId, name from stickers where setId = ?', (setId, ), )

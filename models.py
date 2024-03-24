@@ -18,7 +18,7 @@ from google_login import load_creds
 
 
 def initialize():
-    if config.AUTNENTICATE_METHOD == 'oauth':
+    if config.AUTHENTICATE_METHOD == 'oauth':
         os.environ.pop('GOOGLE_API_KEY')
         gemini_configure(credentials=load_creds(), api_key=None)
         print('Authenticated Google OAuth 2 session.')
@@ -63,7 +63,7 @@ def BaseModelProvider() -> ChatGoogleGenerativeAI:
         temperature=0.9,
         safety_settings=MODEL_SAFETY_SETTING,
         google_api_key=None,
-        credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
+        credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
 
 
 def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
@@ -72,7 +72,7 @@ def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
         convert_system_message_to_human=True,
         temperature=0.9,
         safety_settings=MODEL_SAFETY_SETTING,
-        credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
+        credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
     
     preprocessed = PreprocessPrompt(
         config.MEMORY_MERGING_PROMPT,
@@ -89,7 +89,7 @@ def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
 
 def ImageParsingModelProvider():
     return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=1, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTNENTICATE_METHOD == 'oauth' else None)
+        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=1, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
 
 
 def ImageParsingModel(image: str) -> str:

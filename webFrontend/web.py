@@ -17,6 +17,7 @@ app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
 dProvider = dataProvider.DataProvider(f'{config.BLOB_URL}/data.db')
 chatbotManager = chatbotManager.chatbotManager(dProvider)
 
+
 def parseRequestRange(s, flen):
     s = s[s.find('=')+1:]
     c = s.split('-')
@@ -287,8 +288,8 @@ def charHistory(id, offset):
         'data': dProvider.fetchChatHistory(int(id), int(offset)),
         'status': True
     }
-    
-    
+
+
 @app.route("/api/v1/avatar", methods=["POST"])
 def avatar():
     # offset default to 0
@@ -297,7 +298,7 @@ def avatar():
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
 
-    avatarBlob, mime = dProvider.getAvatar()
+    mime, avatarBlob = dProvider.getAvatar()
     return makeFileResponse(avatarBlob, mime)
 
 
@@ -307,32 +308,33 @@ def stickerAddSet():
         return {'data': 'not authenticated', 'status': False}
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
-    
+
     setName = ''
     try:
         setName = flask.request.json['setName']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     dProvider.createStickerSet(setName)
     return {'status': True}
 
 
 @app.route("/api/v1/sticker/delete_set", methods=["POST"])
-def stickerAddSet():
+def stickerDeleteSet():
     if not authenticateSession():
         return {'data': 'not authenticated', 'status': False}
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
-    
+
     setId = 0
     try:
         setId = flask.request.json['setId']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     dProvider.deleteStickerSet(setId)
     return {'status': True}
+
 
 @app.route("/api/v1/sticker/add", methods=["POST"])
 def stickerAdd():
@@ -340,7 +342,7 @@ def stickerAdd():
         return {'data': 'not authenticated', 'status': False}
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
-    
+
     setId = ''
     stickerName = ''
     try:
@@ -348,15 +350,18 @@ def stickerAdd():
         stickerName = flask.request.args['stickerName']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     try:
-        file = BytesIO()
-        flask.request.files[0].save(file)
-        file.seek(0)
-        dProvider.addSticker(setId, stickerName, (flask.request.files[0].mimetype, file.read()))
+        for i in flask.request.files:
+            print(flask.request.files[i])
+            file = BytesIO()
+            flask.request.files[i].save(file)
+            file.seek(0)
+            dProvider.addSticker(int(setId), stickerName,
+                                 (flask.request.files[i].mimetype, file.read()))
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
-    
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
     return {'status': True}
 
 
@@ -366,25 +371,25 @@ def stickerDelete():
         return {'data': 'not authenticated', 'status': False}
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
-    
+
     stickerId = ''
     try:
         stickerId = flask.request.json['stickerId']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     dProvider.deleteSticker(stickerId)
-    
+
     return {'status': True}
 
 
 @app.route("/api/v1/sticker/get", methods=["GET"])
-def stickerDelete():
+def stickerGet():
     if not authenticateSession():
         return {'data': 'not authenticated', 'status': False}
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
-    
+
     setId = 0
     stickerName = ''
     try:
@@ -392,20 +397,63 @@ def stickerDelete():
         stickerName = flask.request.args['name']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
-    mime, blob = dProvider.getSticker(setId, stickerName)
-    return makeFileResponse(mime, blob)
+
+    try:
+        mime, blob = dProvider.getSticker(setId, stickerName)
+        return makeFileResponse(blob, mime)
+    except exceptions.StickerNotFound as e:
+        with open(f'./emotionPack/yoimiya/awkward.png', 'rb+') as file:
+            b = file.read()
+            return makeFileResponse(b, 'image/png')
 
 
-@app.route("/api/v1/sticker/list", methods=["GET"])
-def stickerDelete():
+@app.route("/api/v1/sticker/rename_set", methods=["POST"])
+def stickerRenameSet():
     if not authenticateSession():
         return {'data': 'not authenticated', 'status': False}
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
-    
+
+    setId = 0
+    newSetName = ''
+    try:
+        setId = flask.request.json['setId']
+        newSetName = flask.request.json['newSetName']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    dProvider.renameStickerSet(setId, newSetName)
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/set_list", methods=["POST"])
+def stickerSetList():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
     return {
-        'data': dProvider.getStickerList(),
+        'data': dProvider.getStickerSetList(),
+        'status': True
+    }
+
+
+@app.route("/api/v1/sticker/list", methods=["POST"])
+def stickerList():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = 0
+    try:
+        setId = flask.request.json['setId']
+    except:
+        return {'status': False, 'data': 'invalid form'}
+
+    return {
+        'data': dProvider.getStickerList(setId),
         'status': True
     }
 
