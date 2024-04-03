@@ -1,5 +1,6 @@
 import json
 import mimetypes
+import re
 import sqlite3
 import logging
 import time
@@ -226,9 +227,9 @@ class DataProvider:
         Returns:
             None | dict[str, str | int]: Character information if exists, None otherwise.
         """
-        return self.db.query('select id, charName, exampleChats, charPrompt, pastMemories, creationTime from personalCharacter where id = ?', (id, ), one=True)
+        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime from personalCharacter where id = ?', (id, ), one=True)
 
-    def createCharacter(self, name: str, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
+    def createCharacter(self, name: str, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
         """
         Create a new character in the database.
 
@@ -240,8 +241,8 @@ class DataProvider:
             avatarPath (str, optional): Path to the character's avatar. Defaults to f'{config.BLOB_URL}/avatar_2.png'.
         """
         with open(avatarPath, 'rb') as file:
-            return self.db.query('insert into personalCharacter (charName, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?)',
-                                 (name, prompt, initalMemory, initalMemory, file.read(), exampleChats, models.DateProider()))
+            return self.db.query('insert into personalCharacter (charName, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?)',
+                                 (name, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, models.DateProider()))
 
     def checkIfCharacterExist(self, name: int) -> bool:
         """
@@ -255,7 +256,7 @@ class DataProvider:
         """
         return bool(len(self.db.query('select count(*) from personalCharacter where name = ?')), (name, ))
 
-    def updateCharacter(self, id: int, name: str, prompt: str, pastMemories: str) -> None:
+    def updateCharacter(self, id: int, name: str, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str) -> None:
         """
         Update character information in the database.
 
@@ -265,8 +266,8 @@ class DataProvider:
             prompt (str): New character prompt.
             pastMemories (str): New past memories for the character.
         """
-        self.db.query('update personalCharacter set charName = ?, charPrompt = ?, pastMemories = ? where id = ?',
-                      (name, prompt, pastMemories, id))
+        self.db.query('update personalCharacter set charName = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ? where id = ?',
+                      (name, useStickerSet, prompt, pastMemories, exampleChats, id))
 
     def getCharacterId(self, name: str) -> int:
         """
@@ -299,10 +300,11 @@ class DataProvider:
         Returns:
             str: Text-only representation of the chat message.
         """
-        trans = {'angry': '😡', 'guility': '🙁', 'happy': '😊', 'sad': '😢', 'awkward': '😳'}
+        trans = {'angry': '😡', 'guility': '🙁',
+                 'happy': '😊', 'sad': '😢', 'awkward': '😳'}
         for i in trans:
             f['text'] = f['text'].replace(f'({i})', trans[i])
-            
+
         if f['type'] == ChatHistoryType.TEXT:
             return f['text']
         elif f['type'] == ChatHistoryType.IMG:
@@ -404,6 +406,7 @@ class DataProvider:
         r: list[dict[str | int]] = []
         for i in l:
             i = i.strip()
+            
             r.append({
                 'type': ChatHistoryType.TEXT,
                 'text': i,
@@ -454,7 +457,8 @@ class DataProvider:
     def fetchChatHistory(self, charId: int, offset: int = 0) -> list[dict[str, int | str]]:
         # fetch latest 30 days history
         time30days = 60 * 60 * 24 * 30
-        print(f'{int(time.time() - offset * time30days)} -> {int(time.time() - offset * time30days - time30days)}')
+        print(f'{int(time.time() - offset * time30days)
+                 } -> {int(time.time() - offset * time30days - time30days)}')
         charName = self.getCharacter(charId)['charName']
         data = self.db.query('select * from chatHistory where charName = ? and timestamp < ? and timestamp > ? order by timestamp',
                              (charName, int(time.time() - offset * time30days), int(time.time() - offset * time30days - time30days)))
@@ -466,48 +470,66 @@ class DataProvider:
         if f is None:
             return f
         return (f['avatarMime'], f['avatar'])
-    
+
     def getAvatar(self) -> tuple[str, bytes] | None:
         f = self.db.query(
             "select avatar, avatarMime from config", (), one=True)
         if f is None:
             return f
-        
+
         return (f['avatarMime'], f['avatar'])
-    
+
     def createStickerSet(self, name: str) -> None:
         self.db.query("insert into stickerSets (setName) values (?)", (name, ))
-        
+
     def renameStickerSet(self, setId: int, newSetName: str) -> None:
-        self.db.query("update stickerSets set setName = ? where id = ?", (newSetName, setId))
-    
+        self.db.query(
+            "update stickerSets set setName = ? where id = ?", (newSetName, setId))
+
     def addSticker(self, setId: int, stickerName: str, sticker: tuple[str, bytes]) -> None:
-        self.db.query("insert into stickers (setId, name, image, mime) values (?, ?, ?, ?)", (setId, stickerName, sticker[1], sticker[0]))
-            
+        self.db.query("insert into stickers (setId, name, image, mime) values (?, ?, ?, ?)",
+                      (setId, stickerName, sticker[1], sticker[0]))
+
     def deleteSticker(self, id: str) -> None:
         self.db.query("delete from stickers where id = ?", (id, ))
-            
+
     def deleteStickerSet(self, name: str) -> None:
         self.db.query("delete from stickerSets where setName = ?", (name, ))
         self.db.query("delete from stickers where setName = ?", (name, ))
-        
+
     def getSticker(self, setId: int, name: str) -> tuple[str, bytes]:
-        d = self.db.query("select mime, image from stickers where name = ? and setId = ?", (name, setId), one=True)
+        d = self.db.query(
+            "select mime, image from stickers where name = ? and setId = ?", (name, setId), one=True)
         if d is None:
-            raise exceptions.StickerNotFound(f'{__name__}: Sticker {setId} of sticker set {setId} not exist')
+            raise exceptions.StickerNotFound(
+                f'{__name__}: Sticker {setId} of sticker set {setId} not exist')
         return (d['mime'], d['image'])
-    
+
     def getStickerSetList(self) -> list[dict[str, str | int]]:
         d = self.db.query('select * from stickerSets')
         r = []
         for i in d:
-            n = self.db.query('select * from stickers where setId = ? limit 1', (i['id'], ), one=True)
+            n = self.db.query(
+                'select * from stickers where setId = ? limit 1', (i['id'], ), one=True)
             r.append({
                 'id': i['id'],
                 'setName': i['setName'],
                 'previewSticker': n['name'] if n is not None else 'none'
             })
         return r
-    
+
+    def getStickerSetInfo(self, setId: int) -> dict[str, str | int] | None:
+        i = self.db.query(
+            'select * from stickerSets where id = ?', (setId, ), one=True)
+        if i is None:
+            return None
+        n = self.db.query(
+            'select * from stickers where setId = ? limit 1', (i['id'], ), one=True)
+        return {
+            'id': i['id'],
+            'setName': i['setName'],
+            'previewSticker': n['name'] if n is not None else 'none'
+        }
+
     def getStickerList(self, setId: int) -> list[dict[str, str | int]]:
         return self.db.query('select id, setId, name from stickers where setId = ?', (setId, ), )

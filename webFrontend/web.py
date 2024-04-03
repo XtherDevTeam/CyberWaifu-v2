@@ -235,6 +235,23 @@ def attachmentDownload(attachmentId: str):
     return makeFileResponse(file, mime)
 
 
+@app.route("/api/v1/char/<id>/info", methods=["POST"])
+def charInfo(id):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        d = dProvider.getCharacter(int(id))
+        if d is None:
+            return {'data': 'character not exist', 'status': False}
+    
+        return {'data': d, 'status': True}
+    except ValueError:
+        return {'data': 'invalid form', 'status': False}
+
+
 @app.route("/api/v1/char/<id>/avatar", methods=["GET"])
 def charAvatar(id):
     if not authenticateSession():
@@ -242,8 +259,41 @@ def charAvatar(id):
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
 
-    mime, file = dProvider.getCharacterAvatar(id)
+    mime, file = dProvider.getCharacterAvatar(int(id))
     return makeFileResponse(file, mime)
+
+
+@app.route("/api/v1/char/<id>/edit", methods=["POST"])
+def charEdit(id):
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    charName = ''
+    charPrompt = ''
+    pastMemories = ''
+    exampleChats = ''
+    useStickerSet = 0
+
+    try:
+        data = flask.request.get_json()
+        print(data)
+        charName = data['charName']
+        charPrompt = data['charPrompt']
+        pastMemories = data['pastMemories']
+        exampleChats = data['exampleChats']
+        useStickerSet = data['useStickerSet']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    dProvider.updateCharacter(int(id), charName, useStickerSet, charPrompt, pastMemories, exampleChats)
+
+    return {
+        'data': 'success',
+        'status': 'true'
+    }
 
 
 @app.route("/api/v1/char/new", methods=["POST"])
@@ -405,6 +455,25 @@ def stickerGet():
         with open(f'./emotionPack/yoimiya/awkward.png', 'rb+') as file:
             b = file.read()
             return makeFileResponse(b, 'image/png')
+
+
+@app.route("/api/v1/sticker/set_info", methods=["POST"])
+def stickerSetInfo():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = 0
+    try:
+        setId = flask.request.json['setId']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    d = dProvider.getStickerSetInfo(setId)
+    if d is None:
+        return {'data': 'sticker set not exist', 'status': False}
+    return {'data': d, 'status': True}
 
 
 @app.route("/api/v1/sticker/rename_set", methods=["POST"])

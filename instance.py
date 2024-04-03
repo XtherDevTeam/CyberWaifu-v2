@@ -33,6 +33,9 @@ class Chatbot:
         print(msg.content)
         return msg.content
 
+    def getAvailableStickers(self) -> list[str]:
+        return [i['name'] for i in self.memory.getAvailableStickers()]
+
     def chat(self, userInput: str) -> str:
         self.conversation.storeUserInput(HumanMessage(userInput))
         msg = self.llm.invoke(self.conversation.getConversation())

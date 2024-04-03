@@ -59,7 +59,7 @@ Use your creativity to adapt to different situations and topics.
 
 Optional:
 
-If you feel it's appropriate, you can express emotions through your words or use following simple emotion instructions: (happy) (awkward) (guility).
+If you feel it's appropriate, you can express emotions through your words or use following simple emotion instructions: {{availableStickers}}.
 However, prioritize natural and engaging conversation over forced emotional expressions.
 
 Let the conversation begin!
@@ -74,7 +74,7 @@ Param used in this prompt:
 - charPrompt
 - memoryPrompt
 - exampleChats
-- supportedStickers
+- availableStickers
 '''
 
 CONVERSATION_CONCLUSION_GENERATOR_PROMPT = \
