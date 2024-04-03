@@ -340,7 +340,7 @@ def charHistory(id, offset):
     }
 
 
-@app.route("/api/v1/avatar", methods=["POST"])
+@app.route("/api/v1/avatar", methods=["GET"])
 def avatar():
     # offset default to 0
     if not authenticateSession():

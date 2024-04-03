@@ -406,6 +406,8 @@ class DataProvider:
         r: list[dict[str | int]] = []
         for i in l:
             i = i.strip()
+            if i == '':
+                continue
             
             r.append({
                 'type': ChatHistoryType.TEXT,
