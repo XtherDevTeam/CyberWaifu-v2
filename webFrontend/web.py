@@ -8,6 +8,7 @@ import dataProvider
 import config
 import webFrontend.config
 import exceptions
+import os
 from io import BytesIO
 
 app = flask.Flask(__name__)
@@ -246,7 +247,7 @@ def charInfo(id):
         d = dProvider.getCharacter(int(id))
         if d is None:
             return {'data': 'character not exist', 'status': False}
-    
+
         return {'data': d, 'status': True}
     except ValueError:
         return {'data': 'invalid form', 'status': False}
@@ -288,7 +289,8 @@ def charEdit(id):
     except:
         return {'data': 'invalid form', 'status': False}
 
-    dProvider.updateCharacter(int(id), charName, useStickerSet, charPrompt, pastMemories, exampleChats)
+    dProvider.updateCharacter(
+        int(id), charName, useStickerSet, charPrompt, pastMemories, exampleChats)
 
     return {
         'data': 'success',
@@ -525,6 +527,28 @@ def stickerList():
         'data': dProvider.getStickerList(setId),
         'status': True
     }
+
+
+@app.route("/api/v1/stt", methods=["POST"])
+def stt():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        for i in flask.request.files:
+            path = dProvider.tempFilePathProvider(
+                os.path.splitext(flask.request.files[i].filename)[1])
+            flask.request.files[i].save(path)
+            v = dProvider.parseAudio(path)
+            os.remove(path)
+            return {'status': True, 'data': v}
+
+    except Exception as e:
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
+    return {'status': True}
 
 
 @app.route("/api/v1/initialize", methods=["POST"])

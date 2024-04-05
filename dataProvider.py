@@ -10,6 +10,8 @@ import exceptions
 import models
 import typing
 import uuid
+import threading
+import os
 
 
 class AttachmentType:
@@ -72,6 +74,7 @@ class DatabaseObject:
 
     def __init__(self, dbPath: str) -> None:
         self.db = sqlite3.connect(dbPath, check_same_thread=False)
+        self.lock = threading.Lock()
 
     def query(self, query, args=(), one=False) -> list[dict[str | typing.Any]] | dict[str | typing.Any]:
         """
@@ -85,15 +88,17 @@ class DatabaseObject:
         Returns:
             list[dict[str | typing.Any]] | dict[str | typing.Any]: Query result.
         """
-        cur = self.db.execute(query, args)
-        rv = [dict((cur.description[idx][0], value)
-                   for idx, value in enumerate(row)) for row in cur.fetchall()]
-        lastrowid = cur.lastrowid
-        cur.close()
-        if query.startswith('insert'):
-            return lastrowid
-        else:
-            return (rv[0] if rv else None) if one else rv
+        
+        with self.lock:
+            cur = self.db.execute(query, args)
+            rv = [dict((cur.description[idx][0], value)
+                    for idx, value in enumerate(row)) for row in cur.fetchall()]
+            lastrowid = cur.lastrowid
+            cur.close()
+            if query.startswith('insert'):
+                return lastrowid
+            else:
+                return (rv[0] if rv else None) if one else rv
 
     def runScript(self, query: str):
         """
@@ -535,3 +540,11 @@ class DataProvider:
 
     def getStickerList(self, setId: int) -> list[dict[str, str | int]]:
         return self.db.query('select id, setId, name from stickers where setId = ?', (setId, ), )
+
+
+    def parseAudio(self, audioPath: str) -> str:
+        return models.AudioToTextModel(audioPath)
+        
+        
+    def tempFilePathProvider(self, extension) -> str:
+        return os.path.join('./temp', f'{uuid.uuid4().hex}.{extension}')

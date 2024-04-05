@@ -8,8 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
 from google.generativeai import configure as gemini_configure
 import google.generativeai as genai
-import transformers
-import torch
+import whisper
 import config
 import time
 import os
@@ -102,23 +101,6 @@ def ImageParsingModel(image: str) -> str:
 
 
 def AudioToTextModel(audioPath: str) -> str:
-    interfereDevice = "cuda:0" if torch.cuda.is_available(
-    ) else "mpu" if torch.mps.is_available() else "cpu"
-    torchDType = torch.float16 if torch.cuda.is_available() else torch.float32
-
-    model_id = "openai/whisper-large-v3"
-
-    model = transformers.AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_id, torch_dtype=torchDType, low_cpu_mem_usage=True, use_safetensors=True
-    )
-    model.to(interfereDevice)
-
-    pipe = transformers.pipeline(
-        task="automatic-speech-recognition",
-        model=model_id,
-        chunk_length_s=30,
-        device=interfereDevice,
-        torch_dtype=torchDType
-    )
-
-    return pipe(audioPath)['text']
+    model = whisper.load_model('large-v3')
+    result = model.transcribe(audioPath)
+    return result['text']
