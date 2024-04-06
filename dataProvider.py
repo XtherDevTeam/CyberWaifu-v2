@@ -88,11 +88,11 @@ class DatabaseObject:
         Returns:
             list[dict[str | typing.Any]] | dict[str | typing.Any]: Query result.
         """
-        
+
         with self.lock:
             cur = self.db.execute(query, args)
             rv = [dict((cur.description[idx][0], value)
-                    for idx, value in enumerate(row)) for row in cur.fetchall()]
+                       for idx, value in enumerate(row)) for row in cur.fetchall()]
             lastrowid = cur.lastrowid
             cur.close()
             if query.startswith('insert'):
@@ -126,32 +126,108 @@ class DataProvider:
     Methods:
         checkIfInitialized():
             Check if the database is initialized.
+
         initialize(userName, password, avatarPath):
             Initialize the database with user information.
+
         getUserName():
             Get the username from the database.
+
         authenticate(pwd):
             Authenticate a user based on the provided password.
+
         getCharacter(id):
             Get information about a character from the database.
+
         createCharacter(name, prompt, initalMemory, exampleChats, avatarPath):
             Create a new character in the database.
+
         checkIfCharacterExist(name):
             Check if a character with the given name exists in the database.
+
         updateCharacter(id, name, prompt, pastMemories):
             Update character information in the database.
+
         getCharacterId(name):
             Get the ID of a character from the database.
+
         chatMsgToTextOnly(f):
             Convert a chat message to text-only representation.
+
         fetchLatestChatHistory(id):
             Fetch the latest chat history entry for a character.
+
         getCharacterList():
             Get a list of characters with their latest messages.
+
         parseMessageChain(chain):
             Parse a message chain and return formatted text.
+
         parseModelResponse(plain):
             Parse a model response and return a list of formatted messages.
+
+        convertMessageHistoryToModelInput(chain):
+            Convert a message history chain to model input format.
+
+        saveAudioAttachment(file, mime):
+            Save an audio attachment to the database.
+
+        saveImageAttachment(file, mime):
+            Save an image attachment to the database.
+
+        getAttachment(attachmentId):
+            Retrieve an attachment from the database.
+
+        saveChatHistory(charName, msgHistory):
+            Save chat history to the database.
+
+        fetchChatHistory(charId, offset):
+            Fetch chat history for a character with optional offset.
+
+        getCharacterAvatar(charId):
+            Retrieve a character's avatar from the database.
+
+        updateCharacterAvatar(charId, image):
+            Update a character's avatar in the database.
+
+        updateAvatar(image):
+            Update the user's avatar in the database.
+
+        getAvatar():
+            Retrieve the user's avatar from the database.
+
+        createStickerSet(name):
+            Create a new sticker set.
+
+        renameStickerSet(setId, newSetName):
+            Rename an existing sticker set.
+
+        addSticker(setId, stickerName, sticker):
+            Add a sticker to a sticker set.
+
+        deleteSticker(id):
+            Delete a sticker from a sticker set.
+
+        deleteStickerSet(name):
+            Delete a sticker set and its associated stickers.
+
+        getSticker(setId, name):
+            Retrieve a specific sticker from a sticker set.
+
+        getStickerSetList():
+            Retrieve a list of all sticker sets with preview information.
+
+        getStickerSetInfo(setId):
+            Retrieve detailed information about a specific sticker set.
+
+        getStickerList(setId):
+            Retrieve a list of stickers within a specific sticker set.
+
+        parseAudio(audioPath):
+            Parse audio from a given path and return text.
+
+        tempFilePathProvider(extension):
+            Generate a temporary file path with the specified extension.
     """
 
     def __init__(self, databasePath: str) -> None:
@@ -398,7 +474,7 @@ class DataProvider:
 
     def parseModelResponse(self, plain: str) -> list[dict[str | int]]:
         """
-        Parse a model response and return a list of formatted messages.
+        Parses a model response and returns a list of formatted messages.
 
         Args:
             plain (str): Plain model response.
@@ -413,7 +489,7 @@ class DataProvider:
             i = i.strip()
             if i == '':
                 continue
-            
+
             r.append({
                 'type': ChatHistoryType.TEXT,
                 'text': i,
@@ -424,6 +500,15 @@ class DataProvider:
         return r
 
     def convertMessageHistoryToModelInput(self, chain: list[dict[str, str | int]]) -> str:
+        """
+        Converts a message history chain to model input format.
+
+        Args:
+            chain (list[dict[str, str | int]]): Message history chain.
+
+        Returns:
+            str: Model input format of the message history.
+        """
         r = ""
 
         for i in chain:
@@ -437,18 +522,47 @@ class DataProvider:
         return r
 
     def saveAudioAttachment(self, file: bytes, mime: str) -> str:
+        """
+        Saves an audio attachment to the database.
+
+        Args:
+            file (bytes): Audio data.
+            mime (str): Mime type of the audio.
+
+        Returns:
+            str: ID of the saved attachment.
+        """
         id = uuid.uuid4().hex
         self.db.query(
-            'insert into attachments (id, timestamp, type, blobMsg, contentType) values (?, ?, ?, ?)', (id, int(time.time()), AttachmentType.AUDIO, file, mime))
+            'insert into attachments (id, timestamp, type, blobMsg, contentType) values (?, ?, ?, ?, ?)', (id, int(time.time()), AttachmentType.AUDIO, file, mime))
         return id
 
     def saveImageAttachment(self, file: bytes, mime: str) -> str:
+        """
+        Saves an image attachment to the database.
+
+        Args:
+            file (bytes): Image data.
+            mime (str): Mime type of the image.
+
+        Returns:
+            str: ID of the saved attachment.
+        """
         id = uuid.uuid4().hex
         self.db.query(
-            'insert into attachments (id, timestamp, type, blobMsg, contentType) values (?, ?, ?, ?)', (id, int(time.time()), AttachmentType.AUDIO, file, mime))
+            'insert into attachments (id, timestamp, type, blobMsg, contentType) values (?, ?, ?, ?, ?)', (id, int(time.time()), AttachmentType.IMG, file, mime))
         return id
 
     def getAttachment(self, attachmentId: str) -> tuple[str, bytes] | None:
+        """
+        Retrieves an attachment from the database.
+
+        Args:
+            attachmentId (str): ID of the attachment.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the attachment if found, None otherwise.
+        """
         f = self.db.query(
             'select blobMsg, contentType from attachments where id = ?', (attachmentId, ), one=True)
         if f is None:
@@ -457,11 +571,28 @@ class DataProvider:
             return (f['contentType'], f['blobMsg'])
 
     def saveChatHistory(self, charName: str, msgHistory: list[dict[str, int | str]]) -> None:
+        """
+        Saves chat history to the database.
+
+        Args:
+            charName (str): Character name.
+            msgHistory (list[dict[str, int | str]]): List of chat messages.
+        """
         for i in msgHistory:
             self.db.query('insert into chatHistory (charName, role, type, text, timestamp) values (?, ?, ?, ?, ?)',
                           (charName, i['role'], i['type'], i['text'], i['timestamp']))
 
     def fetchChatHistory(self, charId: int, offset: int = 0) -> list[dict[str, int | str]]:
+        """
+        Fetches chat history for a character with an optional offset.
+
+        Args:
+            charId (int): Character ID.
+            offset (int, optional): Offset for fetching older chat history. Defaults to 0.
+
+        Returns:
+            list[dict[str, int | str]]: List of chat messages.
+        """
         # fetch latest 30 days history
         time30days = 60 * 60 * 24 * 30
         print(f'{int(time.time() - offset * time30days)
@@ -472,13 +603,52 @@ class DataProvider:
         return data
 
     def getCharacterAvatar(self, charId: int) -> tuple[str, bytes] | None:
+        """
+        Retrieves a character's avatar from the database.
+
+        Args:
+            charId (int): Character ID.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the avatar if found, None otherwise.
+        """
         f = self.db.query(
             "select avatar, avatarMime from personalCharacter where id = ?", (charId, ), one=True)
         if f is None:
             return f
         return (f['avatarMime'], f['avatar'])
 
+    def updateCharacterAvatar(self, charId: int, image: tuple[str, bytes]) -> tuple[str, bytes] | None:
+        """
+        Updates a character's avatar in the database.
+
+        Args:
+            charId (int): Character ID.
+            image (tuple[str, bytes]): Tuple containing mime type and data of the new avatar.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the updated avatar.
+        """
+        self.db.query("update personalCharacter set avatarMime = ?, avatar = ? where id = ?",
+                      (image[0], image[1], charId))
+
+    def updateAvatar(self, image: tuple[str, bytes]):
+        """
+        Updates the user's avatar in the database.
+
+        Args:
+            image (tuple[str, bytes]): Tuple containing mime type and data of the new avatar.
+        """
+        self.db.query(
+            'update config set avatarMime = ?, avatar = ?', (image[0], image[1]))
+
     def getAvatar(self) -> tuple[str, bytes] | None:
+        """
+        Retrieves the user's avatar from the database.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the avatar if found, None otherwise.
+        """
         f = self.db.query(
             "select avatar, avatarMime from config", (), one=True)
         if f is None:
@@ -487,24 +657,70 @@ class DataProvider:
         return (f['avatarMime'], f['avatar'])
 
     def createStickerSet(self, name: str) -> None:
+        """
+        Creates a new sticker set.
+
+        Args:
+            name (str): Name of the sticker set.
+        """
         self.db.query("insert into stickerSets (setName) values (?)", (name, ))
 
     def renameStickerSet(self, setId: int, newSetName: str) -> None:
+        """
+        Renames an existing sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+            newSetName (str): New name for the sticker set.
+        """
         self.db.query(
             "update stickerSets set setName = ? where id = ?", (newSetName, setId))
 
     def addSticker(self, setId: int, stickerName: str, sticker: tuple[str, bytes]) -> None:
+        """
+        Adds a sticker to a sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+            stickerName (str): Name of the sticker.
+            sticker (tuple[str, bytes]): Tuple containing mime type and data of the sticker.
+        """
         self.db.query("insert into stickers (setId, name, image, mime) values (?, ?, ?, ?)",
                       (setId, stickerName, sticker[1], sticker[0]))
 
     def deleteSticker(self, id: str) -> None:
+        """
+        Deletes a sticker from a sticker set.
+
+        Args:
+            id (str): ID of the sticker.
+        """
         self.db.query("delete from stickers where id = ?", (id, ))
 
     def deleteStickerSet(self, name: str) -> None:
+        """
+        Deletes a sticker set and its associated stickers.
+
+        Args:
+            name (str): Name of the sticker set.
+        """
         self.db.query("delete from stickerSets where setName = ?", (name, ))
         self.db.query("delete from stickers where setName = ?", (name, ))
 
     def getSticker(self, setId: int, name: str) -> tuple[str, bytes]:
+        """
+        Retrieves a specific sticker from a sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+            name (str): Name of the sticker.
+
+        Raises:
+            exceptions.StickerNotFound: If the sticker is not found.
+
+        Returns:
+            tuple[str, bytes]: Tuple containing mime type and data of the sticker.
+        """
         d = self.db.query(
             "select mime, image from stickers where name = ? and setId = ?", (name, setId), one=True)
         if d is None:
@@ -513,6 +729,12 @@ class DataProvider:
         return (d['mime'], d['image'])
 
     def getStickerSetList(self) -> list[dict[str, str | int]]:
+        """
+        Retrieves a list of all sticker sets with preview information.
+
+        Returns:
+            list[dict[str, str | int]]: List of sticker sets with their IDs, names, and preview sticker names.
+        """
         d = self.db.query('select * from stickerSets')
         r = []
         for i in d:
@@ -526,6 +748,15 @@ class DataProvider:
         return r
 
     def getStickerSetInfo(self, setId: int) -> dict[str, str | int] | None:
+        """
+        Retrieves detailed information about a specific sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+
+        Returns:
+            dict[str, str | int] | None: Dictionary containing information about the sticker set if found, None otherwise.
+        """
         i = self.db.query(
             'select * from stickerSets where id = ?', (setId, ), one=True)
         if i is None:
@@ -539,12 +770,37 @@ class DataProvider:
         }
 
     def getStickerList(self, setId: int) -> list[dict[str, str | int]]:
+        """
+        Retrieves a list of stickers within a specific sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+
+        Returns:
+            list[dict[str, str | int]]: List of stickers with their IDs, set IDs, and names.
+        """
         return self.db.query('select id, setId, name from stickers where setId = ?', (setId, ), )
 
-
     def parseAudio(self, audioPath: str) -> str:
+        """
+        Parses audio from a given path and returns text.
+
+        Args:
+            audioPath (str): Path to the audio file.
+
+        Returns:
+            str: Text representation of the audio content.
+        """
         return models.AudioToTextModel(audioPath)
-        
-        
+
     def tempFilePathProvider(self, extension) -> str:
+        """
+        Generates a temporary file path with the specified extension.
+
+        Args:
+            extension (str): File extension.
+
+        Returns:
+            str: Temporary file path.
+        """
         return os.path.join('./temp', f'{uuid.uuid4().hex}.{extension}')

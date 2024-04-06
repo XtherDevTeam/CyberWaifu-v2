@@ -43,10 +43,16 @@ class Memory:
     def storeCharPrompt(self, prompt: str) -> None:
         self.char['charPrompt'] = prompt
         self.save()
+        
+    def getCharStickerSet(self) -> int:
+        return self.char['emotionPack']
+    
+    def getCharExampleChats(self) -> int:
+        return self.char['exampleChats']
 
     def save(self) -> None:
         self.dataProvider.updateCharacter(self.dataProvider.getCharacterId(
-            self.getCharName()), self.getCharName(), self.getCharPrompt(), self.getPastMemories())
+            self.getCharName()), self.getCharName(), self.getCharStickerSet(), self.getCharPrompt(), self.getPastMemories(), exampleChats=self.getExampleChats())
 
     def storeMemory(self, userName: str, conversation: str) -> None:
         self.char['pastMemories'] = self.char['pastMemories'].strip() + \

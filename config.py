@@ -22,13 +22,15 @@ AUTHENTICATE_METHOD = 'oauth' if USE_MODEL.startswith('tunedModels') else 'apike
 # how many times chatbotManager will retry when receive an invalid response
 MAX_CHAT_RETRY_COUNT = 0
 
-MEMORY_SUMMARIZING_LIMIT = 32767
+MEMORY_SUMMARIZING_LIMIT = 16386
 
 BLOB_URL = 'blob'
 
 INITIAL_PROMPT = \
     '''
-Imagine you are {{charName}}. You will be interacting with {{userName}} in a conversation that begins on {{datePrompt}}. Remember this date and use it to reference past conversations.
+Imagine you are {{charName}}.
+You will be interacting with {{userName}} in a conversation that begins on {{datePrompt}}.
+Remember this date and use it to reference past conversations.
 
 Here's what you need to know about {{charName}}:
 
@@ -46,12 +48,15 @@ You are encouraged to send multiple messages to emulate actual chat process.
 
 It contains emtional instructions.
 It can also carry on images with the description of image in following format: `(image the_description)`
+Image instructions can only send by user, you can not send them as output.
 
 To help you understand {{charName}} better, here are some examples of their past conversations:
 
 {{exampleChats}}
 
-Now, it's your turn to chat with {{userName}} as {{charName}}. Use your knowledge of {{charName}}'s personality, speech style, and past experiences to respond naturally and authentically. Be creative and adapt to the conversation flow, just like {{charName}} would.
+Now, it's your turn to chat with {{userName}} as {{charName}}.
+Use your knowledge of {{charName}}'s personality, speech style, and past experiences to respond naturally and authentically.
+Be creative and adapt to the conversation flow, just like {{charName}} would.
 
 Remember:
 
@@ -62,6 +67,7 @@ Use your creativity to adapt to different situations and topics.
 Optional:
 
 If you feel it's appropriate, you can express emotions through your words or use following simple emotion instructions: {{availableStickers}}.
+These emotion instructions are fixed and do not change them in the output.
 However, prioritize natural and engaging conversation over forced emotional expressions.
 
 Let the conversation begin!
@@ -110,7 +116,7 @@ Param used in this prompt:
 
 MEMORY_SUMMARIZING_PROMPT = \
     """
-You are given a text of {{charName}}'s memories. Your given task is to summarize it in first-person narration.
+You are given a text of {{charName}}'s memories. Your given task is to summarize it in first-person narration in a single paragraph.
 
 Rules:
 - Preserve the time occured in the memories.

@@ -8,12 +8,19 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
 from google.generativeai import configure as gemini_configure
 import google.generativeai as genai
+import torch
 import whisper
 import config
 import time
 import os
 
 from google_login import load_creds
+
+
+# mps is not available for whisper
+interfereDevice = 'cuda' if torch.cuda.is_available() else 'cpu'
+audioModel = whisper.load_model(
+    'medium', torch.device(interfereDevice), in_memory=True)
 
 
 def initialize():
@@ -72,7 +79,7 @@ def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
         temperature=0.9,
         safety_settings=MODEL_SAFETY_SETTING,
         credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
-    
+
     preprocessed = PreprocessPrompt(
         config.MEMORY_MERGING_PROMPT,
         {
@@ -92,15 +99,16 @@ def ImageParsingModelProvider():
 
 
 def ImageParsingModel(image: str) -> str:
+    print(image)
     llm = ImageParsingModelProvider()
     return llm.invoke([
-        SystemMessage(
-            "You are received a image, your task is to descibe this image and output text prompt"),
-        HumanMessage({"type": "image_url", "image_url": image})
+        HumanMessage(
+            ["You are received a image, your task is to descibe this image and output text prompt",
+             {"type": "image_url", "image_url": image}]
+        )
     ]).content
 
 
 def AudioToTextModel(audioPath: str) -> str:
-    model = whisper.load_model('large-v3')
-    result = model.transcribe(audioPath)
+    result = audioModel.transcribe(audioPath)
     return result['text']

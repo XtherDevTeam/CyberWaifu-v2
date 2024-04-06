@@ -197,10 +197,10 @@ def attachmentUploadAudio():
         mime = flask.request.files[i].mimetype
         if not mime.startswith('audio/'):
             return {'data': 'invalid mimetype expect `audio/`', 'status': False}
-        i = BytesIO()
-        flask.request.files[i].save(i)
-        i.seek(0)
-        id = dProvider.saveAudioAttachment(i.read(), mime)
+        io = BytesIO()
+        flask.request.files[i].save(io)
+        io.seek(0)
+        id = dProvider.saveAudioAttachment(io.read(), mime)
         # only accept the first file
         return {'data': 'success', 'id': id, 'status': True}
 
@@ -212,15 +212,18 @@ def attachmentUploadImage():
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
 
+    print('a')
     for i in flask.request.files:
+        print(flask.request.files[i].filename)
         mime = flask.request.files[i].mimetype
+        print(mime)
         if not mime.startswith('image/'):
             return {'data': 'invalid mimetype expect `image/`', 'status': False}
-
-        i = BytesIO()
-        flask.request.files[i].save(i)
-        i.seek(0)
-        id = dProvider.saveAudioAttachment(i.read(), mime)
+        print('d')
+        io = BytesIO()
+        flask.request.files[i].save(io)
+        io.seek(0)
+        id = dProvider.saveAudioAttachment(io.read(), mime)
         # only accept the first file
         return {'data': 'success', 'id': id, 'status': True}
 
@@ -310,6 +313,7 @@ def charNew():
     charPrompt = ''
     pastMemories = ''
     exampleChats = ''
+    useStickerSet = ''
 
     try:
         data = flask.request.get_json()
@@ -317,10 +321,11 @@ def charNew():
         charPrompt = data['charPrompt']
         pastMemories = data['pastMemories']
         exampleChats = data['exampleChats']
+        useStickerSet = data['useStickerSet']
     except:
         return {'data': 'invalid form', 'status': False}
 
-    dProvider.createCharacter(charName, charPrompt, pastMemories, exampleChats)
+    dProvider.createCharacter(charName, useStickerSet, charPrompt, pastMemories, exampleChats)
 
     return {
         'data': 'success',
@@ -340,6 +345,29 @@ def charHistory(id, offset):
         'data': dProvider.fetchChatHistory(int(id), int(offset)),
         'status': True
     }
+
+
+@app.route("/api/v1/char/<id>/avatar/update", methods=["POST"])
+def charAvatarUpdate(id):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        for i in flask.request.files:
+            io = BytesIO()
+            flask.request.files[i].save(io)
+            io.seek(0)
+            b = io.read()
+            dProvider.updateCharacterAvatar(
+                int(id), (flask.request.files[i].mimetype, b))
+            return {'status': True}
+
+    except Exception as e:
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
+    return {'status': True}
 
 
 @app.route("/api/v1/avatar", methods=["GET"])
@@ -543,7 +571,29 @@ def stt():
             flask.request.files[i].save(path)
             v = dProvider.parseAudio(path)
             os.remove(path)
-            return {'status': True, 'data': v}
+            return {'status': True, 'data': v.strip()}
+
+    except Exception as e:
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
+    return {'status': True}
+
+
+@app.route("/api/v1/avatar/update", methods=["POST"])
+def avatarUpdate():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        for i in flask.request.files:
+            io = BytesIO()
+            flask.request.files[i].save(io)
+            io.seek(0)
+            b = io.read()
+            dProvider.updateAvatar((flask.request.files[i].mimetype, b))
+            return {'status': True}
 
     except Exception as e:
         return {'status': False, 'data': f'failed: {str(e)}'}
