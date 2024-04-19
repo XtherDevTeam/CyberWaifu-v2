@@ -3,6 +3,8 @@ conversation.py
 Provides packages for model operating
 """
 
+
+import chatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
@@ -64,12 +66,20 @@ def PreprocessPrompt(originalPrompt: str, tVars):
 
 def BaseModelProvider() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL,
+        model=config.USE_LEGACY_MODEL,
         convert_system_message_to_human=True,
         temperature=0.9,
         safety_settings=MODEL_SAFETY_SETTING,
-        google_api_key=None,
-        credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
+    )
+    
+    
+def ChatModelProvider(system_prompt: str) -> chatModel.ChatGoogleGenerativeAI:
+    return chatModel.ChatGoogleGenerativeAI(
+        model=config.USE_MODEL,
+        temperature=0.9,
+        safety_settings=MODEL_SAFETY_SETTING,
+        system_prompt=system_prompt
+    )
 
 
 def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:

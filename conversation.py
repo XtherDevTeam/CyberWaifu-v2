@@ -15,8 +15,8 @@ class ConversationMemory:
     @brief accept userName, and character memory object, and initialize converation history for chatbot instance
     """
 
-    def __init__(self, userName, char: memory.Memory, sysMsg: SystemMessage) -> None:
-        self.memory = [sysMsg]
+    def __init__(self, userName, char: memory.Memory) -> None:
+        self.memory = []
         self.userName = userName
         self.char = char
 
@@ -36,12 +36,13 @@ class ConversationMemory:
 
     def summarize(self) -> str:
         realDialogue = []
-        for i in self.memory[1:]:
-            if isinstance(i, AIMessage):
-                for j in i.content.split('(OPT_MULTI_CUR_MSG_END)'):
-                    realDialogue.append(AIMessage(j.strip()))
-            elif isinstance(i, HumanMessage):
-                realDialogue.append(i)
+        for i in self.memory:
+            # Feat: convert new api message to langchain message
+            if i['role'] == 'model':
+                for j in i.content.split('---'):
+                    realDialogue.append(AIMessage(content=j.strip()))
+            elif i['role'] == 'human':
+                realDialogue.append(HumanMessage(i['content']))
             
         conversation = ""
         for i in realDialogue:

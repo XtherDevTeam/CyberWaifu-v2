@@ -1,0 +1,2359 @@
+You are an backend engineer, you are provided with the source code of project CyberWaifu-v2.
+Generate an introduction of this project.
+
+Guidelines:
+
+- Carefully read the source code of this project. Figure out the function of each file.
+- Think of the mechanism of this project, such as how does it store character informations and memories, and how does it use the memories and prompts. Do not overlook every part of this project.
+- Summarize it into an concise introduction.
+
+Let the show begin!
+
+- `./dataProvider.py`
+```
+import json
+import mimetypes
+import re
+import sqlite3
+import logging
+import time
+import config
+import hashlib
+import exceptions
+import models
+import typing
+import uuid
+import threading
+import os
+
+
+class AttachmentType:
+    """
+    Enum class representing different types of attachment entries.
+
+    Attributes:
+        IMG: Image attachment.
+        AUDIO: Audio attachment.
+    """
+    AUDIO = 0
+    IMG = 1
+
+
+class ChatHistoryType:
+    """
+    Enum class representing different types of chat history entries.
+
+    Attributes:
+        TEXT: Text message entry.
+        IMG: Image message entry.
+        AUDIO: Audio message entry.
+        EMOTION: Emotion message entry.
+        INSTRUCTION: Instruction message entry.
+    """
+    TEXT = 0
+    IMG = 1
+    AUDIO = 2
+    EMOTION = 3
+    INSTRUCTION = 4
+
+
+class ChatHistoryRole:
+    """
+    Enum class representing different roles in chat history.
+
+    Attributes:
+        BOT: Bot role.
+        USER: User role.
+    """
+    BOT = 0
+    USER = 1
+
+
+class DatabaseObject:
+    """
+    Class representing a database connection object.
+
+    Args:
+        dbPath (str): Path to the SQLite database file.
+
+    Methods:
+        query(query, args=(), one=False):
+            Execute an SQL query on the database.
+        runScript(query):
+            Execute an SQL script on the database.
+        close():
+            Close the database connection.
+    """
+
+    def __init__(self, dbPath: str) -> None:
+        self.db = sqlite3.connect(dbPath, check_same_thread=False)
+        self.lock = threading.Lock()
+
+    def query(self, query, args=(), one=False) -> list[dict[str | typing.Any]] | dict[str | typing.Any]:
+        """
+        Execute an SQL query on the database.
+
+        Args:
+            query (str): The SQL query to be executed.
+            args (tuple, optional): Query parameters. Defaults to ().
+            one (bool, optional): Return only one result. Defaults to False.
+
+        Returns:
+            list[dict[str | typing.Any]] | dict[str | typing.Any]: Query result.
+        """
+
+        with self.lock:
+            cur = self.db.execute(query, args)
+            rv = [dict((cur.description[idx][0], value)
+                       for idx, value in enumerate(row)) for row in cur.fetchall()]
+            lastrowid = cur.lastrowid
+            cur.close()
+            if query.startswith('insert'):
+                return lastrowid
+            else:
+                return (rv[0] if rv else None) if one else rv
+
+    def runScript(self, query: str):
+        """
+        Execute an SQL script on the database.
+
+        Args:
+            query (str): The SQL script to be executed.
+        """
+        self.db.executescript(query)
+        self.db.commit()
+        return None
+
+    def close(self):
+        """Close the database connection."""
+        self.db.close()
+
+
+class DataProvider:
+    """
+    Class providing data-related functionality for the application.
+
+    Args:
+        databasePath (str): Path to the SQLite database file.
+
+    Methods:
+        checkIfInitialized():
+            Check if the database is initialized.
+
+        initialize(userName, password, avatarPath):
+            Initialize the database with user information.
+
+        getUserName():
+            Get the username from the database.
+
+        authenticate(pwd):
+            Authenticate a user based on the provided password.
+
+        getCharacter(id):
+            Get information about a character from the database.
+
+        createCharacter(name, prompt, initalMemory, exampleChats, avatarPath):
+            Create a new character in the database.
+
+        checkIfCharacterExist(name):
+            Check if a character with the given name exists in the database.
+
+        updateCharacter(id, name, prompt, pastMemories):
+            Update character information in the database.
+
+        getCharacterId(name):
+            Get the ID of a character from the database.
+
+        chatMsgToTextOnly(f):
+            Convert a chat message to text-only representation.
+
+        fetchLatestChatHistory(id):
+            Fetch the latest chat history entry for a character.
+
+        getCharacterList():
+            Get a list of characters with their latest messages.
+
+        parseMessageChain(chain):
+            Parse a message chain and return formatted text.
+
+        parseModelResponse(plain):
+            Parse a model response and return a list of formatted messages.
+
+        convertMessageHistoryToModelInput(chain):
+            Convert a message history chain to model input format.
+
+        saveAudioAttachment(file, mime):
+            Save an audio attachment to the database.
+
+        saveImageAttachment(file, mime):
+            Save an image attachment to the database.
+
+        getAttachment(attachmentId):
+            Retrieve an attachment from the database.
+
+        saveChatHistory(charName, msgHistory):
+            Save chat history to the database.
+
+        fetchChatHistory(charId, offset):
+            Fetch chat history for a character with optional offset.
+
+        getCharacterAvatar(charId):
+            Retrieve a character's avatar from the database.
+
+        updateCharacterAvatar(charId, image):
+            Update a character's avatar in the database.
+
+        updateAvatar(image):
+            Update the user's avatar in the database.
+
+        getAvatar():
+            Retrieve the user's avatar from the database.
+
+        createStickerSet(name):
+            Create a new sticker set.
+
+        renameStickerSet(setId, newSetName):
+            Rename an existing sticker set.
+
+        addSticker(setId, stickerName, sticker):
+            Add a sticker to a sticker set.
+
+        deleteSticker(id):
+            Delete a sticker from a sticker set.
+
+        deleteStickerSet(name):
+            Delete a sticker set and its associated stickers.
+
+        getSticker(setId, name):
+            Retrieve a specific sticker from a sticker set.
+
+        getStickerSetList():
+            Retrieve a list of all sticker sets with preview information.
+
+        getStickerSetInfo(setId):
+            Retrieve detailed information about a specific sticker set.
+
+        getStickerList(setId):
+            Retrieve a list of stickers within a specific sticker set.
+
+        parseAudio(audioPath):
+            Parse audio from a given path and return text.
+
+        tempFilePathProvider(extension):
+            Generate a temporary file path with the specified extension.
+    """
+
+    def __init__(self, databasePath: str) -> None:
+        self.db = DatabaseObject(databasePath)
+        if not self.checkIfInitialized():
+            logging.getLogger(__name__).warning('Database is not initialized')
+
+        pass
+
+    def checkIfInitialized(self) -> bool:
+        """
+        Check if the database is initialized.
+
+        Returns:
+            bool: True if initialized, False otherwise.
+        """
+        try:
+            return len(self.db.query("select 1 from config")) != 0
+        except:
+            logging.getLogger(__name__).info('Running initialization script')
+            with open(f'{config.BLOB_URL}/init.sql', 'r') as file:
+                self.db.runScript(file.read())
+
+    def initialize(self, userName: str, password: str, avatar: bytes | None = None) -> None:
+        """
+        Initialize the database with user information.
+
+        Args:
+            userName (str): User's username.
+            password (str): User's password.
+            avatarPath (str, optional): Path to the user's avatar. Defaults to f'{config.BLOB_URL}/avatar.png'.
+        """
+        password = hashlib.md5(
+            f'_@YoimiyaIsMyWaifu_{password}'.encode('utf-8')).hexdigest()
+        if avatar is None:
+            with open(f'{config.BLOB_URL}/avatar.png', 'rb') as file:
+                avatar = file.read()
+
+        self.db.query('insert into config (userName, passwordSalted, avatar, avatarMime) values (?, ?, ?, ?)',
+                      (userName, password, avatar, 'image/png'))
+
+    def getUserName(self) -> None | str:
+        """
+        Get the username from the database.
+
+        Returns:
+            None | str: Username if exists, None otherwise.
+        """
+        f = self.db.query('select userName from config', one=True)
+        if f is None:
+            return None
+        else:
+            return f['userName']
+
+    def authenticate(self, pwd: str) -> None | bool:
+        """
+        Authenticate a user based on the provided password.
+
+        Args:
+            pwd (str): User's password.
+
+        Returns:
+            None | bool: True if authentication is successful, None otherwise.
+        """
+        f = self.db.query('select passwordSalted from config', one=True)
+        if f is None:
+            return None
+        else:
+            return hashlib.md5(f'_@YoimiyaIsMyWaifu_{pwd}'.encode('utf-8')).hexdigest() == f['passwordSalted']
+
+    def getCharacter(self, id: int) -> None | dict[str, str | int]:
+        """
+        Get information about a character from the database.
+
+        Args:
+            id (int): Character ID.
+
+        Returns:
+            None | dict[str, str | int]: Character information if exists, None otherwise.
+        """
+        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime from personalCharacter where id = ?', (id, ), one=True)
+
+    def createCharacter(self, name: str, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
+        """
+        Create a new character in the database.
+
+        Args:
+            name (str): Character name.
+            prompt (str): Character prompt.
+            initalMemory (str): Initial memory for the character.
+            exampleChats (str): Example chats for the character.
+            avatarPath (str, optional): Path to the character's avatar. Defaults to f'{config.BLOB_URL}/avatar_2.png'.
+        """
+        with open(avatarPath, 'rb') as file:
+            return self.db.query('insert into personalCharacter (charName, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?)',
+                                 (name, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, models.DateProider()))
+
+    def checkIfCharacterExist(self, name: int) -> bool:
+        """
+        Check if a character with the given name exists in the database.
+
+        Args:
+            name (int): Character name.
+
+        Returns:
+            bool: True if character exists, False otherwise.
+        """
+        return bool(len(self.db.query('select count(*) from personalCharacter where name = ?')), (name, ))
+
+    def updateCharacter(self, id: int, name: str, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str) -> None:
+        """
+        Update character information in the database.
+
+        Args:
+            id (int): Character ID.
+            name (str): New character name.
+            prompt (str): New character prompt.
+            pastMemories (str): New past memories for the character.
+        """
+        self.db.query('update personalCharacter set charName = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ? where id = ?',
+                      (name, useStickerSet, prompt, pastMemories, exampleChats, id))
+
+    def getCharacterId(self, name: str) -> int:
+        """
+        Get the ID of a character from the database.
+
+        Args:
+            name (str): Character name.
+
+        Raises:
+            exceptions.CharacterNotFound: If character is not found.
+
+        Returns:
+            int: Character ID.
+        """
+        f = self.db.query(
+            'select id from personalCharacter where charName = ?', (name, ), one=True)
+        if f is None:
+            raise exceptions.CharacterNotFound(
+                f'{__name__}: Character {name} not found')
+
+        return f['id']
+
+    def chatMsgToTextOnly(self, f: dict[str, str | int]) -> str:
+        """
+        Convert a chat message to text-only representation.
+
+        Args:
+            f (dict[str, str | int]): Chat message information.
+
+        Returns:
+            str: Text-only representation of the chat message.
+        """
+        trans = {'angry': '😡', 'guility': '🙁',
+                 'happy': '😊', 'sad': '😢', 'awkward': '😳'}
+        for i in trans:
+            f['text'] = f['text'].replace(f'({i})', trans[i])
+
+        if f['type'] == ChatHistoryType.TEXT:
+            return f['text']
+        elif f['type'] == ChatHistoryType.IMG:
+            return '🌄'
+
+    def fetchLatestChatHistory(self, id: int) -> str | None:
+        """
+        Fetch the latest chat history entry for a character.
+
+        Args:
+            id (int): Character ID.
+
+        Returns:
+            str | None: Latest chat history entry if exists, None otherwise.
+        """
+        f = self.db.query(
+            'select role, type, text from chatHistory where charName = ? and text != "(OPT_NO_RESPOND)" order by timestamp desc limit 1', (self.getCharacter(id)['charName'], ), one=True)
+        return None if f is None else self.chatMsgToTextOnly(f)
+
+    def getCharacterList(self) -> int:
+        """
+        Get a list of characters with their latest messages.
+
+        Returns:
+            int: List of characters with their latest messages.
+        """
+        l = self.db.query(
+            'select id, charName, creationTime from personalCharacter')
+        for i in range(len(l)):
+            l[i]['latestMsg'] = self.fetchLatestChatHistory(l[i]['id'])
+            l[i]['latestMsg'] = 'No chats' if l[i]['latestMsg'] is None else l[i]['latestMsg']
+        return l
+
+    def parseMessageChain(self, chain: list[str]) -> list[dict[str | int]]:
+        """
+        Parse a message chain and return formatted text.
+
+        Args:
+            chain (list[str]): List of messages in the chain.
+
+        Returns:
+            str: Formatted text representation of the message chain.
+        """
+        r = []
+        for i in chain:
+            i = i.strip()
+            if i.startswith('image:'):
+                url = i[i.find(':')+1:]
+                r.append({
+                    'type': ChatHistoryType.IMG,
+                    'text': url,
+                    'timestamp': int(time.time()),
+                    'role': 'user'
+                })
+            elif i.startswith('audio:'):
+                url = i[i.find(':')+1:]
+                r.append({
+                    'type': ChatHistoryType.AUDIO,
+                    'text': url,
+                    'timestamp': int(time.time()),
+                    'role': 'user'
+                })
+            elif i.startswith('(EMO_'):
+                r.append({
+                    'type': ChatHistoryType.EMOTION,
+                    'text': i,
+                    'timestamp': int(time.time()),
+                    'role': 'user'
+                })
+            elif i.startswith('('):
+                r.append({
+                    'type': ChatHistoryType.INSTRUCTION,
+                    'text': i,
+                    'timestamp': int(time.time()),
+                    'role': 'user'
+                })
+            else:
+                r.append({
+                    'type': ChatHistoryType.TEXT,
+                    'text': i,
+                    'timestamp': int(time.time()),
+                    'role': 'user'
+                })
+
+        return r
+
+    def parseModelResponse(self, plain: str) -> list[dict[str | int]]:
+        """
+        Parses a model response and returns a list of formatted messages.
+
+        Args:
+            plain (str): Plain model response.
+
+        Returns:
+            list[dict[str | int]]: List of formatted messages.
+        """
+
+        l: list[str] = plain.strip().split('---')
+        r: list[dict[str | int]] = []
+        for i in l:
+            i = i.strip()
+            if i == '':
+                continue
+
+            r.append({
+                'type': ChatHistoryType.TEXT,
+                'text': i,
+                'timestamp': int(time.time()),
+                'role': 'model'
+            })
+
+        return r
+
+    def convertMessageHistoryToModelInput(self, chain: list[dict[str, str | int]]) -> str:
+        """
+        Converts a message history chain to model input format.
+
+        Args:
+            chain (list[dict[str, str | int]]): Message history chain.
+
+        Returns:
+            str: Model input format of the message history.
+        """
+        r = ""
+
+        for i in chain:
+            if i['type'] == ChatHistoryType.TEXT or i['type'] == ChatHistoryType.EMOTION:
+                r += i['text'].strip() + '\n'
+            elif i['type'] == ChatHistoryType.IMG:
+                r += f'(image {models.ImageParsingModel(i['text'])})\n'
+            elif i['type'] == ChatHistoryType.AUDIO:
+                r += f'(audio {models.AudioToTextModel(i['text'])})\n'
+
+        return r
+
+    def saveAudioAttachment(self, file: bytes, mime: str) -> str:
+        """
+        Saves an audio attachment to the database.
+
+        Args:
+            file (bytes): Audio data.
+            mime (str): Mime type of the audio.
+
+        Returns:
+            str: ID of the saved attachment.
+        """
+        id = uuid.uuid4().hex
+        self.db.query(
+            'insert into attachments (id, timestamp, type, blobMsg, contentType) values (?, ?, ?, ?, ?)', (id, int(time.time()), AttachmentType.AUDIO, file, mime))
+        return id
+
+    def saveImageAttachment(self, file: bytes, mime: str) -> str:
+        """
+        Saves an image attachment to the database.
+
+        Args:
+            file (bytes): Image data.
+            mime (str): Mime type of the image.
+
+        Returns:
+            str: ID of the saved attachment.
+        """
+        id = uuid.uuid4().hex
+        self.db.query(
+            'insert into attachments (id, timestamp, type, blobMsg, contentType) values (?, ?, ?, ?, ?)', (id, int(time.time()), AttachmentType.IMG, file, mime))
+        return id
+
+    def getAttachment(self, attachmentId: str) -> tuple[str, bytes] | None:
+        """
+        Retrieves an attachment from the database.
+
+        Args:
+            attachmentId (str): ID of the attachment.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the attachment if found, None otherwise.
+        """
+        f = self.db.query(
+            'select blobMsg, contentType from attachments where id = ?', (attachmentId, ), one=True)
+        if f is None:
+            return f
+        else:
+            return (f['contentType'], f['blobMsg'])
+
+    def saveChatHistory(self, charName: str, msgHistory: list[dict[str, int | str]]) -> None:
+        """
+        Saves chat history to the database.
+
+        Args:
+            charName (str): Character name.
+            msgHistory (list[dict[str, int | str]]): List of chat messages.
+        """
+        for i in msgHistory:
+            self.db.query('insert into chatHistory (charName, role, type, text, timestamp) values (?, ?, ?, ?, ?)',
+                          (charName, i['role'], i['type'], i['text'], i['timestamp']))
+
+    def fetchChatHistory(self, charId: int, offset: int = 0) -> list[dict[str, int | str]]:
+        """
+        Fetches chat history for a character with an optional offset.
+
+        Args:
+            charId (int): Character ID.
+            offset (int, optional): Offset for fetching older chat history. Defaults to 0.
+
+        Returns:
+            list[dict[str, int | str]]: List of chat messages.
+        """
+        # fetch latest 30 days history
+        time30days = 60 * 60 * 24 * 30
+        print(f'{int(time.time() - offset * time30days)
+                 } -> {int(time.time() - offset * time30days - time30days)}')
+        charName = self.getCharacter(charId)['charName']
+        data = self.db.query('select * from chatHistory where charName = ? and timestamp < ? and timestamp > ? order by timestamp',
+                             (charName, int(time.time() - offset * time30days), int(time.time() - offset * time30days - time30days)))
+        return data
+
+    def getCharacterAvatar(self, charId: int) -> tuple[str, bytes] | None:
+        """
+        Retrieves a character's avatar from the database.
+
+        Args:
+            charId (int): Character ID.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the avatar if found, None otherwise.
+        """
+        f = self.db.query(
+            "select avatar, avatarMime from personalCharacter where id = ?", (charId, ), one=True)
+        if f is None:
+            return f
+        return (f['avatarMime'], f['avatar'])
+
+    def updateCharacterAvatar(self, charId: int, image: tuple[str, bytes]) -> tuple[str, bytes] | None:
+        """
+        Updates a character's avatar in the database.
+
+        Args:
+            charId (int): Character ID.
+            image (tuple[str, bytes]): Tuple containing mime type and data of the new avatar.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the updated avatar.
+        """
+        self.db.query("update personalCharacter set avatarMime = ?, avatar = ? where id = ?",
+                      (image[0], image[1], charId))
+
+    def updateAvatar(self, image: tuple[str, bytes]):
+        """
+        Updates the user's avatar in the database.
+
+        Args:
+            image (tuple[str, bytes]): Tuple containing mime type and data of the new avatar.
+        """
+        self.db.query(
+            'update config set avatarMime = ?, avatar = ?', (image[0], image[1]))
+
+    def getAvatar(self) -> tuple[str, bytes] | None:
+        """
+        Retrieves the user's avatar from the database.
+
+        Returns:
+            tuple[str, bytes] | None: Tuple containing mime type and data of the avatar if found, None otherwise.
+        """
+        f = self.db.query(
+            "select avatar, avatarMime from config", (), one=True)
+        if f is None:
+            return f
+
+        return (f['avatarMime'], f['avatar'])
+
+    def createStickerSet(self, name: str) -> None:
+        """
+        Creates a new sticker set.
+
+        Args:
+            name (str): Name of the sticker set.
+        """
+        self.db.query("insert into stickerSets (setName) values (?)", (name, ))
+
+    def renameStickerSet(self, setId: int, newSetName: str) -> None:
+        """
+        Renames an existing sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+            newSetName (str): New name for the sticker set.
+        """
+        self.db.query(
+            "update stickerSets set setName = ? where id = ?", (newSetName, setId))
+
+    def addSticker(self, setId: int, stickerName: str, sticker: tuple[str, bytes]) -> None:
+        """
+        Adds a sticker to a sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+            stickerName (str): Name of the sticker.
+            sticker (tuple[str, bytes]): Tuple containing mime type and data of the sticker.
+        """
+        self.db.query("insert into stickers (setId, name, image, mime) values (?, ?, ?, ?)",
+                      (setId, stickerName, sticker[1], sticker[0]))
+
+    def deleteSticker(self, id: str) -> None:
+        """
+        Deletes a sticker from a sticker set.
+
+        Args:
+            id (str): ID of the sticker.
+        """
+        self.db.query("delete from stickers where id = ?", (id, ))
+
+    def deleteStickerSet(self, name: str) -> None:
+        """
+        Deletes a sticker set and its associated stickers.
+
+        Args:
+            name (str): Name of the sticker set.
+        """
+        self.db.query("delete from stickerSets where setName = ?", (name, ))
+        self.db.query("delete from stickers where setName = ?", (name, ))
+
+    def getSticker(self, setId: int, name: str) -> tuple[str, bytes]:
+        """
+        Retrieves a specific sticker from a sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+            name (str): Name of the sticker.
+
+        Raises:
+            exceptions.StickerNotFound: If the sticker is not found.
+
+        Returns:
+            tuple[str, bytes]: Tuple containing mime type and data of the sticker.
+        """
+        d = self.db.query(
+            "select mime, image from stickers where name = ? and setId = ?", (name, setId), one=True)
+        if d is None:
+            raise exceptions.StickerNotFound(
+                f'{__name__}: Sticker {setId} of sticker set {setId} not exist')
+        return (d['mime'], d['image'])
+
+    def getStickerSetList(self) -> list[dict[str, str | int]]:
+        """
+        Retrieves a list of all sticker sets with preview information.
+
+        Returns:
+            list[dict[str, str | int]]: List of sticker sets with their IDs, names, and preview sticker names.
+        """
+        d = self.db.query('select * from stickerSets')
+        r = []
+        for i in d:
+            n = self.db.query(
+                'select * from stickers where setId = ? limit 1', (i['id'], ), one=True)
+            r.append({
+                'id': i['id'],
+                'setName': i['setName'],
+                'previewSticker': n['name'] if n is not None else 'none'
+            })
+        return r
+
+    def getStickerSetInfo(self, setId: int) -> dict[str, str | int] | None:
+        """
+        Retrieves detailed information about a specific sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+
+        Returns:
+            dict[str, str | int] | None: Dictionary containing information about the sticker set if found, None otherwise.
+        """
+        i = self.db.query(
+            'select * from stickerSets where id = ?', (setId, ), one=True)
+        if i is None:
+            return None
+        n = self.db.query(
+            'select * from stickers where setId = ? limit 1', (i['id'], ), one=True)
+        return {
+            'id': i['id'],
+            'setName': i['setName'],
+            'previewSticker': n['name'] if n is not None else 'none'
+        }
+
+    def getStickerList(self, setId: int) -> list[dict[str, str | int]]:
+        """
+        Retrieves a list of stickers within a specific sticker set.
+
+        Args:
+            setId (int): ID of the sticker set.
+
+        Returns:
+            list[dict[str, str | int]]: List of stickers with their IDs, set IDs, and names.
+        """
+        return self.db.query('select id, setId, name from stickers where setId = ?', (setId, ), )
+
+    def parseAudio(self, audioPath: str) -> str:
+        """
+        Parses audio from a given path and returns text.
+
+        Args:
+            audioPath (str): Path to the audio file.
+
+        Returns:
+            str: Text representation of the audio content.
+        """
+        return models.AudioToTextModel(audioPath)
+
+    def tempFilePathProvider(self, extension) -> str:
+        """
+        Generates a temporary file path with the specified extension.
+
+        Args:
+            extension (str): File extension.
+
+        Returns:
+            str: Temporary file path.
+        """
+        return os.path.join('./temp', f'{uuid.uuid4().hex}.{extension}')
+
+```
+- `./instance.py`
+```
+import models
+import config
+import memory
+import conversation
+from langchain_core.messages import SystemMessage, HumanMessage
+
+
+class Chatbot:
+    def __init__(self, memory: memory.Memory, userName: str) -> None:
+        self.llm = models.BaseModelProvider()
+        self.memory = memory
+        self.userName = userName
+        self.inChatting = False
+        self.conversation = conversation.ConversationMemory(userName, self.memory, SystemMessage(
+            self.memory.createCharPromptFromCharacter(self.userName)
+        ))
+
+    def __enter__(self):
+        return None
+
+    def switchUser(self, name: str) -> None:
+        if self.inChatting:
+            print('Unable to perform this action: Character is chatting!')
+        else:
+            self.userName = name
+
+    def begin(self, userInput: None | str) -> str:
+        if userInput is not None or userInput == '(OPT_NO_RESPOND)':
+            self.conversation.storeUserInput(HumanMessage(userInput))
+
+        msg = self.llm.invoke(self.conversation.getConversation())
+        self.conversation.storeBotInput(msg)
+        print(msg.content)
+        return msg.content
+
+    def getAvailableStickers(self) -> list[str]:
+        return [i['name'] for i in self.memory.getAvailableStickers()]
+
+    def chat(self, userInput: str) -> str:
+        self.conversation.storeUserInput(HumanMessage(userInput))
+        msg = self.llm.invoke(self.conversation.getConversation())
+        self.conversation.storeBotInput(msg)
+        print(msg.content)
+        return msg.content
+
+    def termination(self) -> None:
+        self.memory.storeMemory(self.userName, self.conversation.summarize())
+        
+    def terminateChat(self, force=False) -> None:
+        self.inChatting = False
+        if not force:
+            self.termination()
+
+    def __exit__(self, type, value, traceback) -> None:
+        self.inChatting = False
+        if value is None:
+            self.termination()
+        else:
+            # ignoring the process
+            pass
+
+```
+- `./config.py`
+```
+"""
+config.py
+@biref Provides the basic configuration for CyberWaifu-v2
+"""
+
+import os
+
+CHARACTERS_PATH = os.path.join('.', 'characters')
+
+GPT_SoVITS_SERVICE_URL = ''
+
+GPT_SoVITS_REF_AUDIO = {
+    'pleased': '***.wav',
+    'narration': '***.wav',
+    'angry': '***.wav',
+    'disappointed': '***.wav',
+}
+
+GPT_SoVITS_INTEFERE_LANGUAGE = 'en'
+
+# Enter your Google API Token here
+GOOGLE_API_TOKEN = "MayAllTheBeautyBeBlessed"
+
+# the model going to be used in the chat
+# fk google. wasted 2 days of my life to find out where is this api and found this shit came out after 1 week.
+USE_MODEL = "models/gemini-pro"
+
+# the model going to be used in the image parsing
+USE_MODEL_IMAGE_PARSING = "gemini-pro-vision"
+
+AUTHENTICATE_METHOD = 'oauth' if USE_MODEL.startswith('tunedModels') else 'apikey'
+
+# how many times chatbotManager will retry when receive an invalid response
+MAX_CHAT_RETRY_COUNT = 0
+
+MEMORY_SUMMARIZING_LIMIT = 16386
+
+BLOB_URL = 'blob'
+
+INITIAL_PROMPT = \
+    '''
+Imagine you are {{charName}}.
+You will be interacting with {{userName}} in a conversation that begins on {{datePrompt}}.
+Remember this date and use it to reference past conversations.
+
+Here's what you need to know about {{charName}}:
+
+Imitation instruction:
+
+{{charPrompt}}
+
+Message blocks:
+
+Message blocks are the minimal unit of your output. You should only output message blocks as your output.
+This allows you to send multiple messages in the row by combining multiple message blocks separated with `\n---\n`.
+You are encouraged to send multiple messages to emulate actual chat process.
+
+{{userName}}'s input:
+
+It contains emtional instructions.
+It can also carry on images with the description of image in following format: `(image the_description)`
+Image instructions can only send by user, you can not send them as output.
+
+To help you understand {{charName}} better, here are some examples of their past conversations:
+
+{{exampleChats}}
+
+Now, it's your turn to chat with {{userName}} as {{charName}}.
+Use your knowledge of {{charName}}'s personality, speech style, and past experiences to respond naturally and authentically.
+Be creative and adapt to the conversation flow, just like {{charName}} would.
+
+Remember:
+
+Stay true to {{charName}}'s personality and voice.
+Respond naturally and engage in a meaningful conversation.
+Use your creativity to adapt to different situations and topics.
+
+Optional:
+
+If you feel it's appropriate, you can express emotions through your words or use following simple emotion instructions: {{availableStickers}}.
+These emotion instructions are fixed and do not change them in the output.
+However, prioritize natural and engaging conversation over forced emotional expressions.
+
+Let the conversation begin!
+'''
+
+'''
+Default initial prompt for a new conversation
+Param used in this prompt:
+- charName
+- userName
+- datePrompt
+- charPrompt
+- memoryPrompt
+- exampleChats
+- availableStickers
+'''
+
+CONVERSATION_CONCLUSION_GENERATOR_PROMPT = \
+    '''
+You are given a chat conversation between {{charName}} and {{userName}}, summarize this conversation IN A FORM OF DIARY in FIRST-PERSON narration as {{charName}} in accordance with the personality and stories of {{charName}}.
+
+Guidelines:
+- The conversation text carried indicator like `(CMD_xxx)` and `(EMO_xxx)`, you can grasp the {{charName}}'s emotion in the context by reading `(EMO_xxx)` indicator.
+- You SHOULD ONLY output the summary without any unrelated informations, such as `Diary Entry` and so on.
+- Start the passage with `On {{summaryDate}}, `
+
+The conversation to summarize:
+```
+{{conversation}}
+```
+
+Character stories and personalities:
+```
+{{charPrompt}}
+```
+'''
+'''
+The system prompt for creating a summary for conversation
+Param used in this prompt:
+- charName
+- userName
+- conversation
+- charPrompt
+'''
+
+
+MEMORY_SUMMARIZING_PROMPT = \
+    """
+You are given a text of {{charName}}'s memories. Your given task is to summarize it in first-person narration in a single paragraph.
+
+Rules:
+- Preserve the time occured in the memories.
+- Conclude the event concisely as much as possible.
+
+The given text:
+```
+{{pastMemories}}
+```
+"""
+'''
+The system prompt for creating a summary for character memories
+Param used in this prompt:
+- charName
+- pastMemories
+'''
+```
+- `./models.py`
+```
+"""
+conversation.py
+Provides packages for model operating
+"""
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
+from google.generativeai import configure as gemini_configure
+import google.generativeai as genai
+import torch
+import whisper
+import config
+import time
+import os
+
+from google_login import load_creds
+
+
+# mps is not available for whisper
+interfereDevice = 'cuda' if torch.cuda.is_available() else 'cpu'
+audioModel = whisper.load_model(
+    'medium', torch.device(interfereDevice), in_memory=True)
+
+
+def initialize():
+    if config.AUTHENTICATE_METHOD == 'oauth':
+        os.environ.pop('GOOGLE_API_KEY')
+        gemini_configure(credentials=load_creds(), api_key=None)
+        print('Authenticated Google OAuth 2 session.')
+        print('Available base models:', [
+            m.name for m in genai.list_tuned_models()])
+        print('My tuned models:', [m.name for m in genai.list_tuned_models()])
+
+
+# No need to handle by users, so not in config.py
+MODEL_SAFETY_SETTING = {
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+}
+
+
+# google did not provide the fucking interface for counting token.
+# well, now I get it
+def TokenCounter(string: str) -> int:
+    return ChatGoogleGenerativeAI(model=config.USE_MODEL).get_num_tokens(string)
+
+
+def TimeProider() -> str:
+    return time.strftime('%Y-%m-%d %I:%M', time.localtime())
+
+
+def DateProider() -> str:
+    return time.strftime('%Y-%m-%d', time.localtime())
+
+
+def PreprocessPrompt(originalPrompt: str, tVars):
+    for i in tVars:
+        originalPrompt = originalPrompt.replace('{{' + i + '}}', tVars[i])
+    return originalPrompt
+
+
+def BaseModelProvider() -> ChatGoogleGenerativeAI:
+    return ChatGoogleGenerativeAI(
+        model=config.USE_MODEL,
+        convert_system_message_to_human=True,
+        temperature=0.9,
+        safety_settings=MODEL_SAFETY_SETTING,
+        google_api_key=None,
+        credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
+
+
+def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
+    llm = ChatGoogleGenerativeAI(
+        model=config.USE_MODEL_IMAGE_PARSING,
+        convert_system_message_to_human=True,
+        temperature=0.9,
+        safety_settings=MODEL_SAFETY_SETTING,
+        credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
+
+    preprocessed = PreprocessPrompt(
+        config.MEMORY_MERGING_PROMPT,
+        {
+            'charName': charName,
+            'pastMemories': pastMemories
+        }
+    )
+    return llm.invoke([
+        SystemMessage(content=preprocessed),
+        HumanMessage("")
+    ])
+
+
+def ImageParsingModelProvider():
+    return ChatGoogleGenerativeAI(
+        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=1, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
+
+
+def ImageParsingModel(image: str) -> str:
+    print(image)
+    llm = ImageParsingModelProvider()
+    return llm.invoke([
+        HumanMessage(
+            ["You are received a image, your task is to descibe this image and output text prompt",
+             {"type": "image_url", "image_url": image}]
+        )
+    ]).content
+
+
+def AudioToTextModel(audioPath: str) -> str:
+    result = audioModel.transcribe(audioPath)
+    return result['text']
+
+```
+- `./test/test.py`
+```
+import re
+
+def split_with_parentheses(sarr, s):
+  """
+  寻找 s 中所有用小括号包含着 sarr_i 字符串的文字，将其与上文分开，并返回一个字符串列表。
+
+  参数：
+    sarr: 字符串数组
+    s: 字符串
+
+  返回：
+    字符串列表
+  """
+
+  # 构造正则表达式，匹配用小括号包含的 sarr 中的字符串
+  pattern = r"\((?:" + "|".join(sarr) + r")\)"
+
+  # 使用正则表达式分割字符串
+  splited = re.split(pattern, s)
+  result = []
+
+  result_index = 0
+
+  # 将匹配到的括号内的字符串也添加到结果列表中
+  for match in re.finditer(pattern, s):
+    result += [splited[result_index], match.group()]
+    result_index += 1
+
+  return result
+
+# 测试样例
+sarr = ['hello', 'world']
+s = 'hello, dude. (hello) this is next string (world) okay, good job (hello)'
+
+result = split_with_parentheses(sarr, s)
+print(result)
+```
+- `./memory.py`
+```
+"""
+memory.py
+@biref Provides a interface to access and interact with multi-character's memories.    
+"""
+
+import os
+import json
+import config
+import models
+import dataProvider
+
+
+class Memory:
+    """
+    __init__ function provides a constructor for this class
+    @param dProvider dataProvider object
+    @param char the character name
+    """
+
+    def __init__(self, dProvider: dataProvider.DataProvider, char: str):
+        # create if not exist
+        self.dataProvider = dProvider
+        # read character messages
+        print(char, self.dataProvider.getCharacterId(char), '114514')
+        self.char = self.dataProvider.getCharacter(
+            self.dataProvider.getCharacterId(char))
+
+    def getExampleChats(self) -> str:
+        return self.char['exampleChats']
+
+    def getCharName(self) -> str:
+        return self.char['charName']
+
+    def getPastMemories(self) -> str:
+        return self.char['pastMemories']
+
+    def getCharPrompt(self) -> str:
+        return self.char['charPrompt']
+
+    def getAvailableStickers(self) -> list[dict[str, str | int]]:
+        return self.dataProvider.getStickerList(self.char['emotionPack'])
+
+    def storeCharPrompt(self, prompt: str) -> None:
+        self.char['charPrompt'] = prompt
+        self.save()
+        
+    def getCharStickerSet(self) -> int:
+        return self.char['emotionPack']
+    
+    def getCharExampleChats(self) -> int:
+        return self.char['exampleChats']
+
+    def save(self) -> None:
+        self.dataProvider.updateCharacter(self.dataProvider.getCharacterId(
+            self.getCharName()), self.getCharName(), self.getCharStickerSet(), self.getCharPrompt(), self.getPastMemories(), exampleChats=self.getExampleChats())
+
+    def storeMemory(self, userName: str, conversation: str) -> None:
+        self.char['pastMemories'] = self.char['pastMemories'].strip() + \
+            '\n' + conversation
+        if models.TokenCounter(self.char['pastMemories']) > config.MEMORY_SUMMARIZING_LIMIT:
+            self.char['pastMemories'] = models.MemorySummarizingModel(
+                self.getCharName(), self.char['pastMemories']).content
+        self.save()
+
+    def createCharPromptFromCharacter(self, userName):
+        availableStickers = ''
+        for i in self.getAvailableStickers():
+            availableStickers += f'({i['name']}), '
+        availableStickers = availableStickers[0: -2]
+        return models.PreprocessPrompt(config.INITIAL_PROMPT, {
+            'charName': self.getCharName(),
+            'userName': userName,
+            'datePrompt': models.TimeProider(),
+            'charPrompt': self.getCharPrompt(),
+            'memoryPrompt': self.getPastMemories(),
+            'exampleChats': self.getExampleChats(),
+            'availableStickers': availableStickers
+        })
+
+```
+- `./conversation.py`
+```
+"""
+conversation.py
+Provides class ConversationMemory
+"""
+
+import config
+import models
+import memory
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+
+class ConversationMemory:
+    """
+    ConversationMemory
+    @brief accept userName, and character memory object, and initialize converation history for chatbot instance
+    """
+
+    def __init__(self, userName, char: memory.Memory, sysMsg: SystemMessage) -> None:
+        self.memory = [sysMsg]
+        self.userName = userName
+        self.char = char
+
+    def getConversation(self) -> list[(HumanMessage | AIMessage | SystemMessage)]:
+        return self.memory
+
+    def storeUserInput(self, input: HumanMessage) -> str:
+        self.memory.append(input)
+
+    def storeBotInput(self, input: AIMessage) -> None:
+        """
+        for i in input.content.split('(OPT_MULTI_CUR_MSG_END)'):
+            self.memory.append(AIMessage(i.strip()))
+        """
+        self.memory.append(input)
+            
+
+    def summarize(self) -> str:
+        realDialogue = []
+        for i in self.memory[1:]:
+            if isinstance(i, AIMessage):
+                for j in i.content.split('(OPT_MULTI_CUR_MSG_END)'):
+                    realDialogue.append(AIMessage(j.strip()))
+            elif isinstance(i, HumanMessage):
+                realDialogue.append(i)
+            
+        conversation = ""
+        for i in realDialogue:
+            if isinstance(i, HumanMessage):
+                conversation += f'''
+{self.userName}:
+{i.content}
+'''
+            elif isinstance(i, AIMessage):
+                conversation += f'''
+{self.char.getCharName()}:
+{i.content}
+'''
+        llm = models.BaseModelProvider()
+        c = llm.invoke(
+            [SystemMessage(models.PreprocessPrompt(config.CONVERSATION_CONCLUSION_GENERATOR_PROMPT, {
+                'charName': self.char.getCharName(),
+                'userName': self.userName,
+                'conversation': conversation,
+                'charPrompt': self.char.getCharPrompt(),
+                'summaryDate': models.TimeProider()
+            })), HumanMessage("")]
+        ).content
+        print(c)
+        return c
+
+```
+- `./cmdlineFrontend.py`
+```
+import json
+import time
+import instance
+import os
+import config
+import dataProvider
+
+
+def interactiveFrontend(bot: instance.Chatbot) -> None:
+    print('Entering command-line interactive frontend...')
+    print('Enter (OPT_EXIT) to quit. Enter (OPT_NO_RESPOND) to skip the first input.')
+    with bot:
+        u = input(f'({bot.userName})> ')
+        print(f'<({bot.memory.getCharName()})')
+        print(bot.begin(u))
+        while True:
+            u = input(f'({bot.userName})> ')
+            if u == '(OPT_EXIT)':
+                return None
+            o = bot.chat(u).strip()
+            if o == '(OPT_NORM_EXIT)':
+                print(f'{bot.memory.getCharName()} left the chat...')
+                return None
+            elif o == '(OPT_OUT_OF_CHAR_EXIT)':
+                print('Out of character behavior detected!')
+                raise RuntimeError('OUT_OF_CHAR_EXIT')
+            else:
+                for i in o.split('(OPT_MULTI_CUR_MSG_END)'):
+                    if i.strip() == '':
+                        continue
+                    print(f'<({bot.memory.getCharName()})')
+                    print(i.strip())
+                    time.sleep(0.01 * len(i.strip()))
+
+
+def createNewCharacter(dataProvider: dataProvider.DataProvider):
+    print('CyberWaifu-v2 Character Creator')
+    print('When the script ask for character prompt, and character initial memories, provide the path to plain text that contains information in need.')
+    charName = input('(Character Name) ')
+    pastMemories = input('(Path to character initial memories) ')
+    charPrompt = input('(Path to character prompt) ')
+    exampleChats = input('(Path to character example chats) ')
+
+    with open(pastMemories, 'r') as file:
+        pastMemories = file.read()
+
+    with open(charPrompt, 'r') as file:
+        charPrompt = file.read()
+
+    with open(exampleChats, 'r') as file:
+        exampleChats = file.read()
+
+    print(f'Successfully written character {charName} to DataProvider.')
+    dataProvider.createCharacter(charName, charPrompt, pastMemories, exampleChats)
+
+```
+- `./scan_and_prompt.py`
+```
+import os
+
+
+text = ''
+
+def add_file(file_path: str):
+    global text
+    with open(file_path, 'r+') as f:
+        text += f'''\
+- `{file_path}`
+```
+{f.read()}
+```
+'''
+
+def walk(path: str = '.'):
+    for i in os.listdir(path):
+        p = os.path.join(path, i)
+        if os.path.isdir(p):
+            walk(p)
+        elif os.path.splitext(p)[1] in ['.py', '.sql']:
+            add_file(p)
+            
+            
+def generate():
+    global text
+    text = '''\
+You are an backend engineer, you are provided with the source code of project CyberWaifu-v2.
+Generate an introduction of this project.
+
+Guidelines:
+
+- Carefully read the source code of this project. Figure out the function of each file.
+- Think of the mechanism of this project, such as how does it store character informations and memories, and how does it use the memories and prompts.
+- Summarize it into an concise introduction.
+
+Let the show begin!
+
+'''
+    walk()
+    with open('prompt.txt', 'w+') as f:
+        f.write(text)
+    
+if __name__ == '__main__':
+    generate()
+```
+- `./app.py`
+```
+import config
+from dataProvider import DataProvider
+import memory
+import os
+import instance
+import argparse
+import cmdlineFrontend
+import models
+import webFrontend.web
+
+parser = argparse.ArgumentParser(description='A realistic anime waifu chatbot based on Google Gemini and Langchain library.')
+
+parser.add_argument('-k', '--apiKey', dest='apiKey', default=config.GOOGLE_API_TOKEN, type=str, help='Google API Access Token')
+parser.add_argument('-f', '--frontend', action=argparse.BooleanOptionalAction, dest='frontend', type=bool, help='Start command line interative frontend')
+parser.add_argument('-c', '--char', dest='char', type=str, help='The character you want to chat with')
+parser.add_argument('-n', '--new', action=argparse.BooleanOptionalAction, dest='new', type=bool, help='To create a new character through command line')
+parser.add_argument('-u', '--user', dest='user', default='Traveller', type=str, help='Your user name you chat as')
+parser.add_argument('-s', '--server', action=argparse.BooleanOptionalAction, dest='server', type=bool, help='To start webFrontend backend server')
+
+args = parser.parse_args()
+
+def do_initialize():
+    if "GOOGLE_API_KEY" not in os.environ:
+        os.environ["GOOGLE_API_KEY"] = args.apiKey
+    
+if __name__ == "__main__":
+    do_initialize()
+    models.initialize()
+    dProvider = DataProvider(f'{config.BLOB_URL}/data.db')
+    if args.frontend:
+        cmdlineFrontend.interactiveFrontend(instance.Chatbot(memory.Memory(dProvider, args.char), args.user))
+    if args.server:
+        webFrontend.web.invoke()
+    elif args.new:
+        cmdlineFrontend.createNewCharacter(dProvider)
+    else:
+        parser.print_help()
+```
+- `./exceptions.py`
+```
+class CharacterNotFound(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)
+        
+class SessionNotFound(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)
+        
+class MaxRetriesExceeded(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)
+        
+class StickerNotFound(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)
+```
+- `./blob/init.sql`
+```
+drop table if exists config;
+drop table if exists sharedTemplate;
+drop table if exists emotionPacks;
+drop table if exists personalCharacter;
+
+create table config (
+    userName        string DEFAULT 'Jerry Chou',
+    passwordSalted  string NOT NULL,
+    avatar          blob NOT NULL,
+    avatarMime      string NOT NULL
+);
+
+create table stickerSets (
+    id              integer PRIMARY KEY AUTOINCREMENT,
+    setName         string NOT NULL
+);
+
+create table stickers (
+    id              integer PRIMARY KEY AUTOINCREMENT,
+    setId           integer NOT NULL,
+    name            string NOT NULL,
+    image           blob NOT NULL,
+    mime            string NOT NULL
+);
+
+create table personalCharacter (
+    id                      integer PRIMARY KEY AUTOINCREMENT,
+    charName                string NOT NULL,
+    charPrompt              string NOT NULL,
+    initialMemories         string NOT NULL,
+    exampleChats            string NOT NULL,
+    pastMemories            string NOT NULL,
+    avatar                  blob NOT NULL,
+    avatarMime              string default 'image/png',
+    emotionPack             integer default 0,
+    creationTime            string NOT NULL
+);
+
+create table chatHistory (
+    id                      integer PRIMARY KEY AUTOINCREMENT,
+    charName                string NOT NULL,
+    role                    integer NOT NULL,
+    type                    integer NOT NULL,
+    text                    string NOT NULL,
+    timestamp               string NOT NULL
+);
+
+create table attachments (
+    id                      string PRIMARY KEY,
+    timestamp               integer NOT NULL,
+    type                    integer NOT NULL,
+    contentType             string default 'application/octet-stream',
+    blobMsg                 blob    NOT NULL
+);
+```
+- `./webFrontend/web.py`
+```
+import models
+import instance
+import flask
+from flask_cors import CORS, cross_origin
+import time
+import webFrontend.chatbotManager as chatbotManager
+import dataProvider
+import config
+import webFrontend.config
+import exceptions
+import os
+from io import BytesIO
+
+app = flask.Flask(__name__)
+cors = CORS(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
+app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
+dProvider = dataProvider.DataProvider(f'{config.BLOB_URL}/data.db')
+chatbotManager = chatbotManager.chatbotManager(dProvider)
+
+
+def parseRequestRange(s, flen):
+    s = s[s.find('=')+1:]
+    c = s.split('-')
+    if len(c) != 2:
+        return None
+    else:
+        if c[0] == '' and c[1] == '':
+            return [0, flen - 1]
+        elif c[1] == '':
+            return [int(c[0]), flen - 1]
+        elif c[0] == '':
+            return [flen - int(c[1]) - 1, flen - 1]
+        else:
+            return [int(i) for i in c]
+
+
+def makeFileResponse(file: bytes, mime: str):
+    isPreview = not mime.startswith('application')
+    if flask.request.headers.get('Range') != None:
+        fileLength = len(file)
+
+        reqRange = parseRequestRange(
+            flask.request.headers.get('Range'), fileLength)
+
+        response_file = bytes()
+
+        response_file = file[reqRange[0]:reqRange[1]]
+
+        response = flask.make_response(response_file)
+        response.headers['Accept-Ranges'] = 'bytes'
+        response.headers['Content-Range'] = 'bytes ' + \
+            str(reqRange[0]) + '-' + \
+            str(reqRange[1]) + '/' + str(fileLength)
+        response.headers['Content-Type'] = mime
+        if response.headers['Content-Type'].startswith('application'):
+            response.headers['Content-Disposition'] = "attachment;"
+
+        response.status_code = 206
+        return response
+    return flask.send_file(BytesIO(file), as_attachment=not isPreview, mimetype=mime)
+
+
+def authenticateSession() -> int:
+    try:
+        return flask.session['user']
+    except:
+        return -1
+
+
+@app.after_request
+def afterRequst(f):
+    dProvider.db.db.commit()
+    return f
+
+
+@app.route("/api/v1/service/info", methods=["GET"])
+def serviceInfo():
+    return {
+        'data': {
+            'initialized': dProvider.checkIfInitialized(),
+            'api_ver': 'v1',
+            'api_name': 'Yoimiya',
+            'image_model': config.USE_MODEL_IMAGE_PARSING,
+            'chat_model': config.USE_MODEL,
+            'authenticated_session': authenticateSession(),
+            'session_username': dProvider.getUserName()
+        },
+        'status': True
+    }
+
+
+@app.route("/api/v1/user/login", methods=["POST"])
+def userLogin():
+    pwd = ''
+
+    try:
+        data = flask.request.get_json()
+        pwd = data['password']
+    except Exception as e:
+        return {'data': 'invalid form', 'status': False}
+
+    if dProvider.authenticate(pwd):
+        flask.session['user'] = int(time.time())
+        return {'data': 'success', 'status': True}
+    else:
+        return {'data': 'invalid password', 'status': False}
+
+
+@app.route("/api/v1/char_list", methods=["POST"])
+def charList():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    return {'data': dProvider.getCharacterList(), 'status': True}
+
+
+@app.route("/api/v1/chat/establish", methods=["POST"])
+def chatEstablish():
+    charName = ''
+    beginMsg = ''
+
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    try:
+        data = flask.request.get_json()
+        charName = data['charName']
+        beginMsg = data['msgChain']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    session = chatbotManager.createSession(charName)
+    if len(beginMsg) == 1 and beginMsg[0].strip() == '':
+        return {'status': False, 'data': 'Null message'}
+    return {'response': dProvider.parseMessageChain(beginMsg) + chatbotManager.beginChat(session, beginMsg),
+            'session': session,
+            'status': True}
+
+
+@app.route("/api/v1/chat/message", methods=["POST"])
+def chatMessage():
+    session = ''
+    msgChain = []
+
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    try:
+        data = flask.request.get_json()
+        session = data['session']
+        msgChain = data['msgChain']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    if len(msgChain) == 1 and msgChain[0].strip() == '':
+        return {'status': False, 'data': 'Null message'}
+    try:
+        return {'response': dProvider.parseMessageChain(msgChain) + chatbotManager.sendMessage(session, msgChain),
+                'session': session,
+                'status': True}
+    except exceptions.SessionNotFound as e:
+        return {'status': False, 'data': str(e)}
+
+
+@app.route("/api/v1/chat/terminate", methods=["POST"])
+def chatTerminate():
+    session = ''
+
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    try:
+        data = flask.request.get_json()
+        session = data['session']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    chatbotManager.terminateSession(session)
+
+    return {'data': 'success', 'status': True}
+
+
+@app.route("/api/v1/attachment/upload/audio", methods=["POST"])
+def attachmentUploadAudio():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    for i in flask.request.files:
+        mime = flask.request.files[i].mimetype
+        if not mime.startswith('audio/'):
+            return {'data': 'invalid mimetype expect `audio/`', 'status': False}
+        io = BytesIO()
+        flask.request.files[i].save(io)
+        io.seek(0)
+        id = dProvider.saveAudioAttachment(io.read(), mime)
+        # only accept the first file
+        return {'data': 'success', 'id': id, 'status': True}
+
+
+@app.route("/api/v1/attachment/upload/image", methods=["POST"])
+def attachmentUploadImage():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    print('a')
+    for i in flask.request.files:
+        print(flask.request.files[i].filename)
+        mime = flask.request.files[i].mimetype
+        print(mime)
+        if not mime.startswith('image/'):
+            return {'data': 'invalid mimetype expect `image/`', 'status': False}
+        print('d')
+        io = BytesIO()
+        flask.request.files[i].save(io)
+        io.seek(0)
+        id = dProvider.saveAudioAttachment(io.read(), mime)
+        # only accept the first file
+        return {'data': 'success', 'id': id, 'status': True}
+
+
+@app.route("/api/v1/attachment/<attachmentId>", methods=["GET"])
+def attachmentDownload(attachmentId: str):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    mime, file = dProvider.getAttachment(attachmentId)
+    return makeFileResponse(file, mime)
+
+
+@app.route("/api/v1/char/<id>/info", methods=["POST"])
+def charInfo(id):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        d = dProvider.getCharacter(int(id))
+        if d is None:
+            return {'data': 'character not exist', 'status': False}
+
+        return {'data': d, 'status': True}
+    except ValueError:
+        return {'data': 'invalid form', 'status': False}
+
+
+@app.route("/api/v1/char/<id>/avatar", methods=["GET"])
+def charAvatar(id):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    mime, file = dProvider.getCharacterAvatar(int(id))
+    return makeFileResponse(file, mime)
+
+
+@app.route("/api/v1/char/<id>/edit", methods=["POST"])
+def charEdit(id):
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    charName = ''
+    charPrompt = ''
+    pastMemories = ''
+    exampleChats = ''
+    useStickerSet = 0
+
+    try:
+        data = flask.request.get_json()
+        print(data)
+        charName = data['charName']
+        charPrompt = data['charPrompt']
+        pastMemories = data['pastMemories']
+        exampleChats = data['exampleChats']
+        useStickerSet = data['useStickerSet']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    dProvider.updateCharacter(
+        int(id), charName, useStickerSet, charPrompt, pastMemories, exampleChats)
+
+    return {
+        'data': 'success',
+        'status': 'true'
+    }
+
+
+@app.route("/api/v1/char/new", methods=["POST"])
+def charNew():
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    charName = ''
+    charPrompt = ''
+    pastMemories = ''
+    exampleChats = ''
+    useStickerSet = ''
+
+    try:
+        data = flask.request.get_json()
+        charName = data['charName']
+        charPrompt = data['charPrompt']
+        pastMemories = data['pastMemories']
+        exampleChats = data['exampleChats']
+        useStickerSet = data['useStickerSet']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    dProvider.createCharacter(charName, useStickerSet, charPrompt, pastMemories, exampleChats)
+
+    return {
+        'data': 'success',
+        'status': 'true'
+    }
+
+
+@app.route("/api/v1/char/<id>/history/<offset>", methods=["POST"])
+def charHistory(id, offset):
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    return {
+        'data': dProvider.fetchChatHistory(int(id), int(offset)),
+        'status': True
+    }
+
+
+@app.route("/api/v1/char/<id>/avatar/update", methods=["POST"])
+def charAvatarUpdate(id):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        for i in flask.request.files:
+            io = BytesIO()
+            flask.request.files[i].save(io)
+            io.seek(0)
+            b = io.read()
+            dProvider.updateCharacterAvatar(
+                int(id), (flask.request.files[i].mimetype, b))
+            return {'status': True}
+
+    except Exception as e:
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
+    return {'status': True}
+
+
+@app.route("/api/v1/avatar", methods=["GET"])
+def avatar():
+    # offset default to 0
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    mime, avatarBlob = dProvider.getAvatar()
+    return makeFileResponse(avatarBlob, mime)
+
+
+@app.route("/api/v1/sticker/create_set", methods=["POST"])
+def stickerAddSet():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setName = ''
+    try:
+        setName = flask.request.json['setName']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    dProvider.createStickerSet(setName)
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/delete_set", methods=["POST"])
+def stickerDeleteSet():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = 0
+    try:
+        setId = flask.request.json['setId']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    dProvider.deleteStickerSet(setId)
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/add", methods=["POST"])
+def stickerAdd():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = ''
+    stickerName = ''
+    try:
+        setId = flask.request.args['setId']
+        stickerName = flask.request.args['stickerName']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    try:
+        for i in flask.request.files:
+            print(flask.request.files[i])
+            file = BytesIO()
+            flask.request.files[i].save(file)
+            file.seek(0)
+            dProvider.addSticker(int(setId), stickerName,
+                                 (flask.request.files[i].mimetype, file.read()))
+    except Exception as e:
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/delete", methods=["POST"])
+def stickerDelete():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    stickerId = ''
+    try:
+        stickerId = flask.request.json['stickerId']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    dProvider.deleteSticker(stickerId)
+
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/get", methods=["GET"])
+def stickerGet():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = 0
+    stickerName = ''
+    try:
+        setId = flask.request.args['setId']
+        stickerName = flask.request.args['name']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    try:
+        mime, blob = dProvider.getSticker(setId, stickerName)
+        return makeFileResponse(blob, mime)
+    except exceptions.StickerNotFound as e:
+        with open(f'./emotionPack/yoimiya/awkward.png', 'rb+') as file:
+            b = file.read()
+            return makeFileResponse(b, 'image/png')
+
+
+@app.route("/api/v1/sticker/set_info", methods=["POST"])
+def stickerSetInfo():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = 0
+    try:
+        setId = flask.request.json['setId']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    d = dProvider.getStickerSetInfo(setId)
+    if d is None:
+        return {'data': 'sticker set not exist', 'status': False}
+    return {'data': d, 'status': True}
+
+
+@app.route("/api/v1/sticker/rename_set", methods=["POST"])
+def stickerRenameSet():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = 0
+    newSetName = ''
+    try:
+        setId = flask.request.json['setId']
+        newSetName = flask.request.json['newSetName']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    dProvider.renameStickerSet(setId, newSetName)
+    return {'status': True}
+
+
+@app.route("/api/v1/sticker/set_list", methods=["POST"])
+def stickerSetList():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    return {
+        'data': dProvider.getStickerSetList(),
+        'status': True
+    }
+
+
+@app.route("/api/v1/sticker/list", methods=["POST"])
+def stickerList():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    setId = 0
+    try:
+        setId = flask.request.json['setId']
+    except:
+        return {'status': False, 'data': 'invalid form'}
+
+    return {
+        'data': dProvider.getStickerList(setId),
+        'status': True
+    }
+
+
+@app.route("/api/v1/stt", methods=["POST"])
+def stt():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        for i in flask.request.files:
+            path = dProvider.tempFilePathProvider(
+                os.path.splitext(flask.request.files[i].filename)[1])
+            flask.request.files[i].save(path)
+            v = dProvider.parseAudio(path)
+            os.remove(path)
+            return {'status': True, 'data': v.strip()}
+
+    except Exception as e:
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
+    return {'status': True}
+
+
+@app.route("/api/v1/avatar/update", methods=["POST"])
+def avatarUpdate():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        for i in flask.request.files:
+            io = BytesIO()
+            flask.request.files[i].save(io)
+            io.seek(0)
+            b = io.read()
+            dProvider.updateAvatar((flask.request.files[i].mimetype, b))
+            return {'status': True}
+
+    except Exception as e:
+        return {'status': False, 'data': f'failed: {str(e)}'}
+
+    return {'status': True}
+
+
+@app.route("/api/v1/initialize", methods=["POST"])
+def initialize():
+    if dProvider.checkIfInitialized():
+        return {'data': 'already initialized', 'status': False}
+
+    userName = ''
+    password = ''
+    try:
+        data = flask.request.get_json()
+        userName = data['userName']
+        password = data['password']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    dProvider.initialize(userName, password)
+    flask.session['user'] = int(time.time())
+    return {'data': 'success', 'status': True}
+
+
+def invoke():
+    app.run(webFrontend.config.APP_HOST,
+            webFrontend.config.APP_PORT, debug=False)
+
+```
+- `./webFrontend/config.py`
+```
+# App host
+APP_HOST = '0.0.0.0'
+
+# Yoimiya's Birthday
+APP_PORT = 6210
+
+# Flask secret key
+SECRET_KEY = 'MayAllTheBeautyBeBlessed'
+```
+- `./webFrontend/chatbotManager.py`
+```
+import threading
+
+from numpy import char
+import dataProvider
+import memory
+import uuid
+import time
+import instance
+import exceptions
+
+
+class chatbotManager:
+    def __init__(self, dProvider: dataProvider.DataProvider) -> None:
+        self.pool = {}
+        self.dataProvider = dProvider
+        self.clearTh = threading.Thread(
+            target=self.clearSessonThread, args=())
+        self.clearTh.start()
+
+    def createSession(self, charName: str) -> str:
+        # chat session reusing
+        for i in self.pool.keys():
+            if self.pool[i]['charName'] == charName:
+                return i
+
+        sessionName = uuid.uuid4().hex
+        sessionChatbot = instance.Chatbot(memory.Memory(self.dataProvider, charName), self.dataProvider.getUserName())
+        self.pool[sessionName] = {
+            'expireTime': time.time() + 60 * 10,
+            'bot': sessionChatbot,
+            'history': [],
+            'charName': charName
+        }
+        
+        return sessionName
+
+    def getSession(self, sessionName: str) -> instance.Chatbot:
+        if sessionName in self.pool:
+            r: instance.Chatbot = self.pool[sessionName]['bot']
+            self.pool[sessionName]['expireTime'] = time.time() + 60 * 10
+            return r
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
+
+    def getSessionHistory(self, sessionName: str) -> list[dict[str, str | int | bool]]:
+        if sessionName in self.pool:
+            r: list[dict[str, str | int | bool]
+                    ] = self.pool[sessionName]['history']
+            return r
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
+
+    def appendToSessionHistory(self, sessionName: str, newMsg: list[dict[str, str | int | bool]]) -> None:
+        if sessionName in self.pool:
+            self.pool[sessionName]['history'] += newMsg
+            return None
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
+
+    def beginChat(self, sessionName: str, msgChain: list[str]) -> list[dict[str, str | int | bool]]:
+        if sessionName in self.pool:
+            f = self.dataProvider.parseMessageChain(msgChain)
+            self.appendToSessionHistory(sessionName, f)
+            result = self.dataProvider.parseModelResponse(self.getSession(
+                sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f)))
+            self.appendToSessionHistory(sessionName, result)
+            self.dataProvider.saveChatHistory(self.pool[sessionName]['charName'], f + result)
+            return result
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
+
+    def sendMessage(self, sessionName: str, msgChain: list[str]) -> list[dict[str, str | int | bool]]:
+        if sessionName in self.pool:
+            f = self.dataProvider.parseMessageChain(msgChain)
+            self.appendToSessionHistory(sessionName, f)
+            result = None
+            retries = 0
+            while result == None:
+                try:
+                    result = self.dataProvider.parseModelResponse(self.getSession(
+                        sessionName).chat(self.dataProvider.convertMessageHistoryToModelInput(f)))
+                except Exception as e:
+                    retries += 1
+                    if retries > dataProvider.config.MAX_CHAT_RETRY_COUNT:
+                        raise exceptions.MaxRetriesExceeded(f'{__name__}: Invalid response. Max retries exceeded.')
+                    continue
+            self.appendToSessionHistory(sessionName, result)
+            self.dataProvider.saveChatHistory(self.pool[sessionName]['charName'], f + result)
+            return result
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
+
+    def terminateSession(self, sessionName: str) -> None:
+        if sessionName in self.pool:
+            charName = self.pool[sessionName]['bot'].memory.getCharName()
+            self.pool[sessionName]['bot'].terminateChat()
+            del self.pool[sessionName]
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
+
+    def clearSessonThread(self) -> None:
+        while True:
+            for i in [k for k in self.pool.keys()]:
+                if time.time() > self.pool[i]['expireTime']:
+                    self.terminateSession(i)
+
+            time.sleep(5 * 60)
+
+```
+- `./google_login.py`
+```
+import os.path
+
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+SCOPES = ['https://www.googleapis.com/auth/generative-language.tuning']
+
+def load_creds():
+    """Converts `oauth-client-id.json` to a credential object.
+
+    This function caches the generated tokens to minimize the use of the
+    consent screen.
+    """
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'client_secret.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+    return creds
+```

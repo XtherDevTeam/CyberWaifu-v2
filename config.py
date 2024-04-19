@@ -10,6 +10,17 @@ CHARACTERS_PATH = os.path.join('.', 'characters')
 # Enter your Google API Token here
 GOOGLE_API_TOKEN = "MayAllTheBeautyBeBlessed"
 
+GPT_SoVITS_SERVICE_URL = ''
+
+GPT_SoVITS_REF_AUDIO = {
+    'pleased': '***.wav',
+    'narration': '***.wav',
+    'angry': '***.wav',
+    'disappointed': '***.wav',
+}
+
+GPT_SoVITS_INTEFERE_LANGUAGE = 'en'
+
 # the model going to be used in the chat
 # fk google. wasted 2 days of my life to find out where is this api and found this shit came out after 1 week.
 USE_MODEL = "models/gemini-1.5-pro-latest"

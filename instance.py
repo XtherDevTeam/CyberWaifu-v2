@@ -1,19 +1,19 @@
+from re import I
 import models
 import config
 import memory
 import conversation
+import chatModel
 from langchain_core.messages import SystemMessage, HumanMessage
 
 
 class Chatbot:
     def __init__(self, memory: memory.Memory, userName: str) -> None:
-        self.llm = models.BaseModelProvider()
+        self.llm = models.ChatModelProvider(memory.createCharPromptFromCharacter(userName))
         self.memory = memory
         self.userName = userName
         self.inChatting = False
-        self.conversation = conversation.ConversationMemory(userName, self.memory, SystemMessage(
-            self.memory.createCharPromptFromCharacter(self.userName)
-        ))
+        self.conversation = conversation.ConversationMemory(userName, self.memory)
 
     def __enter__(self):
         return None
@@ -24,24 +24,35 @@ class Chatbot:
         else:
             self.userName = name
 
-    def begin(self, userInput: None | str) -> str:
-        if userInput is not None or userInput == '(OPT_NO_RESPOND)':
-            self.conversation.storeUserInput(HumanMessage(userInput))
+    def getRefText(self, userInput: None | list[dict[str, str]]) -> str:
+        r = ""
 
-        msg = self.llm.invoke(self.conversation.getConversation())
-        self.conversation.storeBotInput(msg)
-        print(msg.content)
-        return msg.content
+        for i in userInput:
+            if i['content_type'] == 'text':
+                r += i['content'] + "\n"
+            elif i['content_type'] =='image':
+                r += f'(image {models.ImageParsingModel(i["content"])})\n'
+
+        return r
+
+    def begin(self, userInput: None | list[dict[str, str]]) -> str:
+        if userInput is not None or userInput == '(OPT_NO_RESPOND)':
+            self.conversation.storeUserInput(chatModel.HumanMessage(chatModel.HumanMessage(self.getRefText(userInput))))
+
+        msg = self.llm.initiate(userInput)
+        self.conversation.storeBotInput(chatModel.AIMessage(msg))
+        print(msg)
+        return msg
 
     def getAvailableStickers(self) -> list[str]:
         return [i['name'] for i in self.memory.getAvailableStickers()]
 
-    def chat(self, userInput: str) -> str:
-        self.conversation.storeUserInput(HumanMessage(userInput))
-        msg = self.llm.invoke(self.conversation.getConversation())
-        self.conversation.storeBotInput(msg)
-        print(msg.content)
-        return msg.content
+    def chat(self, userInput: list[dict[str, str]]) -> str:
+        self.conversation.storeUserInput(chatModel.HumanMessage(self.getRefText(userInput)))
+        msg = self.llm.chat(userInput)
+        self.conversation.storeBotInput(chatModel.AIMessage(msg))
+        print(msg)
+        return msg
 
     def termination(self) -> None:
         self.memory.storeMemory(self.userName, self.conversation.summarize())

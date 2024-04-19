@@ -12,7 +12,7 @@ import typing
 import uuid
 import threading
 import os
-
+import chatModel
 
 class AttachmentType:
     """
@@ -498,8 +498,8 @@ class DataProvider:
             })
 
         return r
-
-    def convertMessageHistoryToModelInput(self, chain: list[dict[str, str | int]]) -> str:
+    
+    def convertMessageHistoryToModelInput(self, chain: list[dict[str, str | int]]) -> list[dict[str, str]]:
         """
         Converts a message history chain to model input format.
 
@@ -507,22 +507,18 @@ class DataProvider:
             chain (list[dict[str, str | int]]): Message history chain.
 
         Returns:
-            str: Model input format of the message history.
+            list[dict[str, str]]: Message represtation in new api format.
         """
-        r = ""
-        
-        if len(chain) == 1 and chain[0]['type'] == ChatHistoryType.IMG:
-            return [{"type": "image_url", "image_url": chain[0]['text']}]
-            
+        r = []
 
         for i in chain:
             if i['type'] == ChatHistoryType.TEXT or i['type'] == ChatHistoryType.EMOTION:
-                r += i['text'].strip() + '\n'
+                r.append(chatModel.HumanMessage(i['text'].strip()))
             elif i['type'] == ChatHistoryType.IMG:
-                # Decrepated
-                pass
+                r.append(chatModel.HumanMessage(i['text'], 'image'))
             elif i['type'] == ChatHistoryType.AUDIO:
-                r += f'(audio {models.AudioToTextModel(i['text'])})\n'
+                # r += f'(audio {models.AudioToTextModel(i['text'])})\n'
+                print(f"{__name__}: Audio not supported yet")
 
         return r
 

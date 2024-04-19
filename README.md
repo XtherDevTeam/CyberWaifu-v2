@@ -30,3 +30,5 @@ An Character Roleplay Chatbot based on Google Gemini Pro.
 
 - 完善前端
 - DataProvider 改单例
+- 当点击发送按钮时，等待五秒，再发送请求，若用户继续打字，则重置等待时间。允许用户单次发送多条信息。
+- 加入TTS，允许模型发送音频。
