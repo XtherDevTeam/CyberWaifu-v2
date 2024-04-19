@@ -510,12 +510,17 @@ class DataProvider:
             str: Model input format of the message history.
         """
         r = ""
+        
+        if len(chain) == 1 and chain[0]['type'] == ChatHistoryType.IMG:
+            return [{"type": "image_url", "image_url": chain[0]['text']}]
+            
 
         for i in chain:
             if i['type'] == ChatHistoryType.TEXT or i['type'] == ChatHistoryType.EMOTION:
                 r += i['text'].strip() + '\n'
             elif i['type'] == ChatHistoryType.IMG:
-                r += f'(image {models.ImageParsingModel(i['text'])})\n'
+                # Decrepated
+                pass
             elif i['type'] == ChatHistoryType.AUDIO:
                 r += f'(audio {models.AudioToTextModel(i['text'])})\n'
 

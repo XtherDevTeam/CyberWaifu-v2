@@ -12,9 +12,11 @@ GOOGLE_API_TOKEN = "MayAllTheBeautyBeBlessed"
 
 # the model going to be used in the chat
 # fk google. wasted 2 days of my life to find out where is this api and found this shit came out after 1 week.
-USE_MODEL = "models/gemini-pro"
+USE_MODEL = "models/gemini-1.5-pro-latest"
+USE_LEGACY_MODEL = "models/gemini-pro"
 
 # the model going to be used in the image parsing
+# DEPRECATED: Gemini 1.5 Pro has supported image input during multi-turn chat
 USE_MODEL_IMAGE_PARSING = "gemini-pro-vision"
 
 AUTHENTICATE_METHOD = 'oauth' if USE_MODEL.startswith('tunedModels') else 'apikey'
@@ -66,8 +68,9 @@ Use your creativity to adapt to different situations and topics.
 
 Optional:
 
-If you feel it's appropriate, you can express emotions through your words or use following simple emotion instructions: {{availableStickers}}.
+If you feel it's appropriate, you can express emotions through your words or use only following simple emotion instructions, instead of UTF-8 Emojis: {{availableStickers}}.
 These emotion instructions are fixed and do not change them in the output.
+**Do not** use UTF-8 Emojis.
 However, prioritize natural and engaging conversation over forced emotional expressions.
 
 Let the conversation begin!
