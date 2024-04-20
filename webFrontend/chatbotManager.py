@@ -74,16 +74,16 @@ class chatbotManager:
 
             result = []
 
-            if TokenCounter(plain) < 6210 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0:
+            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 5) == 2:
                 # remove all emojis in `plain`
-                
+
                 plain = EmojiRemoveModel(plain)
-                
+
                 result = self.dataProvider.convertModelResponseToAudio(
                     self.getSession(
                         sessionName).memory.getCharTTSServiceId(),
                     self.dataProvider.parseModelResponse(plain),
-                    #self.getSession(sessionName).memory.getAvailableStickers()
+                    # self.getSession(sessionName).memory.getAvailableStickers()
                 )
             else:
                 plain = EmojiToStickerInstrctionModel(plain, ''.join(
@@ -112,16 +112,16 @@ class chatbotManager:
                     plain = self.getSession(
                         sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
 
-                    if TokenCounter(plain) < 6210 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0:
+                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 5) == 2:
                         # remove all emojis in `plain`
-                        
+
                         plain = EmojiRemoveModel(plain)
-                        
+
                         result = self.dataProvider.convertModelResponseToAudio(
                             self.getSession(
                                 sessionName).memory.getCharTTSServiceId(),
                             self.dataProvider.parseModelResponse(plain),
-                            #self.getSession(sessionName).memory.getAvailableStickers()
+                            # self.getSession(sessionName).memory.getAvailableStickers()
                         )
                     else:
                         plain = EmojiToStickerInstrctionModel(plain, ''.join(

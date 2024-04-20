@@ -175,7 +175,7 @@ Your given task is to convert the emojis into the available sticker instructions
 Guidelines:
 1. Find each emoji in the message and understand them in accordance with the context.
 2. Convert them to corresponding available sticker instructions. 
-   If there are no available sticker instructions matches the meaning, you can *ignore* them and don't output them or replace it with available sticker instructions which have similar meaning.
+   If there are no available sticker instructions matches the meaning, replace it with available sticker instructions which have similar meaning.
 3. Output the result contained the converted message.
 
 Rules:
