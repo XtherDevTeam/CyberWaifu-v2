@@ -149,6 +149,7 @@ Guidelines:
 
 Rules:
 1. You **should only** use the available emotions mentioned in the prompt.
+2. Return the JSON result directly.
 
 Here is the available emotions: {{availableEmotions}}
 
@@ -194,6 +195,26 @@ Param used in this prompt:
 - message
 """
 
+TEXT_EMOJI_REMOVING_PROMPT = \
+'''
+You are given a piece of message which contains emojis to express emotions.
+Your given task is to remove all the emojis.
+
+Guidelines:
+1. Find each emoji in the message and understand them in accordance with the context.
+2. Remove them all from the message.
+3. Output the result contained the converted message.
+
+The given message:
+```
+{{message}}
+```
+'''
+"""
+The system prompt for emoji removing function
+Param used in this prompt:
+- message
+"""
 
 def generateTempPath(ext: str = None):
     return os.path.join('./temp', f'{uuid.uuid4().hex}.{ext}')

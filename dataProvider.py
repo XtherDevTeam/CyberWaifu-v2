@@ -1,3 +1,4 @@
+from ast import Str
 import json
 import mimetypes
 import re
@@ -950,19 +951,23 @@ class DataProvider:
             list[dict[str, str]]: TTS input.
         """
 
-        # remove all (xxx) flag
-        for i in response:
-            i['text'] = re.sub(r'\((.*?)\)', '', i['text'])
-
         while True:
             try:
-                return models.BaseModelProvider().invoke([langchain_core.messages.SystemMessage(
+                s = models.BaseModelProvider(1).invoke([langchain_core.messages.HumanMessage(
                     models.PreprocessPrompt(config.TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT, {
-                        'availableEmotions': availableEmotions,
+                        'availableEmotions': ''.join(i['name'] for i in availableEmotions),
                         'messageJSON': json.dumps(response)
                     })
-                ), chatModel.HumanMessage("")]).content
+                )]).content
+                
+                # force to retrieve json response
+                s = s[s.find('['): s.rfind(']')+1]
+                
+                print(s)
+                return json.loads(s)
             except Exception as e:
+                print(str(e))
+                time.sleep(5)
                 pass
 
     def getReferenceAudioByName(self, serviceId: int, name: str):
@@ -978,7 +983,7 @@ class DataProvider:
         """
 
         i = self.db.query(
-            'select * from GPTSoVitsReferenceAudios where serviceId = ? and name = ?', (serviceId, name))
+            'select * from GPTSoVitsReferenceAudios where serviceId = ? and name = ?', (serviceId, name), one=True)
         if i is None:
             return None
         return {
@@ -1002,9 +1007,12 @@ class DataProvider:
 
         serviceInfo = self.getGPTSoVitsService(serviceId)
         GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'])
-
-        r = self.convertModelResponseToTTSInput(response)
+        print(response)
+        
+        r = self.convertModelResponseToTTSInput(response, serviceInfo['reference_audios'])
         result = []
+        
+        print(r)
         for i in r:
             refAudio = self.getReferenceAudioByName(serviceId, i['emotion'])
             if refAudio is None:
@@ -1012,7 +1020,7 @@ class DataProvider:
             attachment = self.saveAudioAttachment(GPTSoVitsEndpoint.tts(refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw.read(), 'audio/wav')
             result.append({
                 'type': ChatHistoryType.AUDIO,
-                'role': ChatHistoryRole.BOT,
+                'role': 'bot',
                 'text': attachment,
                 'timestamp': int(time.time()),
             })

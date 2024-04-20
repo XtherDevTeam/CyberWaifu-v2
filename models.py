@@ -99,8 +99,7 @@ def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
         }
     )
     return llm.invoke([
-        SystemMessage(content=preprocessed),
-        HumanMessage("")
+        HumanMessage(content=preprocessed)
     ])
 
 
@@ -120,11 +119,16 @@ def ImageParsingModel(image: str) -> str:
     ]).content
 
 
-def EmojiToStickerInstrctionModel(text: str, availableStickers: list[str]):
+def EmojiToStickerInstrctionModel(text: str, availableStickers: list[str]) -> str:
     p = PreprocessPrompt(config.TEXT_EMOJI_TO_INSTRUCTION_MAPPING_PROMPT, {
         'message': text,
         'availableStickers': availableStickers
     })
+    return BaseModelProvider(1).invoke([HumanMessage(p)]).content
+
+
+def EmojiRemoveModel(text: str) -> str:
+    p = PreprocessPrompt(config.TEXT_EMOJI_REMOVING_PROMPT, {'message': text})
     return BaseModelProvider(1).invoke([HumanMessage(p)]).content
 
 

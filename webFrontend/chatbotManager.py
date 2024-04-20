@@ -9,7 +9,7 @@ import instance
 import exceptions
 import random
 
-from models import EmojiToStickerInstrctionModel, TokenCounter
+from models import EmojiRemoveModel, EmojiToStickerInstrctionModel, TokenCounter
 
 
 class chatbotManager:
@@ -71,11 +71,26 @@ class chatbotManager:
 
             plain = self.getSession(
                 sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f))
-            
-            plain = EmojiToStickerInstrctionModel(plain, ''.join(f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
-            
-            result = self.dataProvider.parseModelResponse(plain)
-            
+
+            result = []
+
+            if TokenCounter(plain) < 6210 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0:
+                # remove all emojis in `plain`
+                
+                plain = EmojiRemoveModel(plain)
+                
+                result = self.dataProvider.convertModelResponseToAudio(
+                    self.getSession(
+                        sessionName).memory.getCharTTSServiceId(),
+                    self.dataProvider.parseModelResponse(plain),
+                    #self.getSession(sessionName).memory.getAvailableStickers()
+                )
+            else:
+                plain = EmojiToStickerInstrctionModel(plain, ''.join(
+                    f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
+
+                result = self.dataProvider.parseModelResponse(plain)
+
             self.appendToSessionHistory(sessionName, result)
 
             self.dataProvider.saveChatHistory(
@@ -97,15 +112,23 @@ class chatbotManager:
                     plain = self.getSession(
                         sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
 
-                    plain = EmojiToStickerInstrctionModel(plain, ''.join(f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
-
-                    result = self.dataProvider.parseModelResponse(plain)
-
                     if TokenCounter(plain) < 6210 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0:
+                        # remove all emojis in `plain`
+                        
+                        plain = EmojiRemoveModel(plain)
+                        
                         result = self.dataProvider.convertModelResponseToAudio(
-                            self.dataProvider.getCharacter(self.getSession(sessionName).memory.getCharTTSServiceId()),
-                            result)
-                    
+                            self.getSession(
+                                sessionName).memory.getCharTTSServiceId(),
+                            self.dataProvider.parseModelResponse(plain),
+                            #self.getSession(sessionName).memory.getAvailableStickers()
+                        )
+                    else:
+                        plain = EmojiToStickerInstrctionModel(plain, ''.join(
+                            f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
+
+                        result = self.dataProvider.parseModelResponse(plain)
+
                 except Exception as e:
                     retries += 1
                     if retries > dataProvider.config.MAX_CHAT_RETRY_COUNT:
