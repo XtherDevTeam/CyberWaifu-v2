@@ -1020,7 +1020,7 @@ class DataProvider:
             attachment = self.saveAudioAttachment(GPTSoVitsEndpoint.tts(refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw.read(), 'audio/wav')
             result.append({
                 'type': ChatHistoryType.AUDIO,
-                'role': 'bot',
+                'role': 'model',
                 'text': attachment,
                 'timestamp': int(time.time()),
             })

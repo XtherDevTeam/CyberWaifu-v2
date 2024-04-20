@@ -39,7 +39,7 @@ class ConversationMemory:
         for i in self.memory:
             # Feat: convert new api message to langchain message
             if i['role'] == 'model':
-                for j in i['text'].split('---'):
+                for j in i['content'].split('---'):
                     realDialogue.append(AIMessage(content=j.strip()))
             elif i['role'] == 'human':
                 realDialogue.append(HumanMessage(i['content']))
