@@ -13,11 +13,13 @@ import google.ai.generativelanguage as glm
 
 class Chatbot:
     def __init__(self, memory: memory.Memory, userName: str) -> None:
-        self.llm = models.ChatModelProvider(memory.createCharPromptFromCharacter(userName))
+        self.llm = models.ChatModelProvider(
+            memory.createCharPromptFromCharacter(userName))
         self.memory = memory
         self.userName = userName
         self.inChatting = False
-        self.conversation = conversation.ConversationMemory(userName, self.memory)
+        self.conversation = conversation.ConversationMemory(
+            userName, self.memory)
 
     def __enter__(self):
         return None
@@ -34,17 +36,18 @@ class Chatbot:
         for i in userInput:
             if i['content_type'] == 'text':
                 r += i['content'] + "\n"
-            elif i['content_type'] =='image':
+            elif i['content_type'] == 'image':
                 r += f'(image {models.ImageParsingModel(i["content"])})\n'
 
         return r
 
     def begin(self, userInput: None | list[dict[str, str]]) -> str:
         if userInput is not None or userInput == '(OPT_NO_RESPOND)':
-            self.conversation.storeUserInput(chatModel.HumanMessage(chatModel.HumanMessage(self.getRefText(userInput))))
+            self.conversation.storeUserInput(chatModel.HumanMessage(
+                chatModel.HumanMessage(self.getRefText(userInput))))
 
         modelInput = self.convertMessageListToInput(userInput)
-        
+
         msg = self.llm.initiate(modelInput)
         self.conversation.storeBotInput(chatModel.AIMessage(msg))
         print(msg)
@@ -58,34 +61,37 @@ class Chatbot:
         if message['content_type'] == 'text':
             return message['content']
         elif message['content_type'] == 'image':
-            binary, mime = self.memory.dataProvider.getAttachment(message['content'])
-            
-            fp = self.memory.dataProvider.tempFilePathProvider(mimetypes.guess_extension(mime))
+            mime, binary = self.memory.dataProvider.getAttachment(
+                message['content'])
+
+            fp = self.memory.dataProvider.tempFilePathProvider(
+                mimetypes.guess_extension(mime))
             with open(fp, 'wb+') as f:
                 f.write(binary)
-            
-            return genai.upload_file(fp, mime)
+
+            return genai.upload_file(fp, mime_type=mime)
         elif message['content_type'] == 'audio':
-            binary, mime = self.memory.dataProvider.getAttachment(message['content'])
-            
+            mime, binary = self.memory.dataProvider.getAttachment(
+                message['content'])
+
             fp = self.memory.dataProvider.tempFilePathProvider('m4a')
             with open(fp, 'wb+') as f:
                 f.write(binary)
-            
-            return genai.upload_file(fp, mime)
-        else:
-            raise ValueError(f'{__name__}: Unknown message type: {\
-                            message["type"]}')
 
+            return genai.upload_file(fp, mime_type=mime)
+        else:
+            raise ValueError(f'{__name__}: Unknown message type: {
+                message["type"]}')
 
     def convertMessageListToInput(self, messages: list[dict[str, str]]) -> list[str | glm.File]:
         return [self.convertMessageToInput(i) for i in messages]
 
     def chat(self, userInput: list[dict[str, str]]) -> str:
-        self.conversation.storeUserInput(chatModel.HumanMessage(self.getRefText(userInput)))
-        
-        modelInput = self.convertMessageListToInput(self.memory.dataProvider, userInput)
-        
+        self.conversation.storeUserInput(
+            chatModel.HumanMessage(self.getRefText(userInput)))
+
+        modelInput = self.convertMessageListToInput(userInput)
+
         msg = self.llm.chat(modelInput)
         self.conversation.storeBotInput(chatModel.AIMessage(msg))
         print(msg)
@@ -93,7 +99,7 @@ class Chatbot:
 
     def termination(self) -> None:
         self.memory.storeMemory(self.userName, self.conversation.summarize())
-        
+
     def terminateChat(self, force=False) -> None:
         self.inChatting = False
         if not force:

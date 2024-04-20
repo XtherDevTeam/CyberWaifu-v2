@@ -40,13 +40,12 @@ def makeFileResponse(file: bytes, mime: str):
     isPreview = not mime.startswith('application')
     if flask.request.headers.get('Range') != None:
         fileLength = len(file)
-
         reqRange = parseRequestRange(
             flask.request.headers.get('Range'), fileLength)
 
         response_file = bytes()
 
-        response_file = file[reqRange[0]:reqRange[1]]
+        response_file = file[reqRange[0]:reqRange[1] if reqRange[0] != reqRange[1] else reqRange[1] + 1]
 
         response = flask.make_response(response_file)
         response.headers['Accept-Ranges'] = 'bytes'
@@ -59,6 +58,7 @@ def makeFileResponse(file: bytes, mime: str):
 
         response.status_code = 206
         return response
+    
     return flask.send_file(BytesIO(file), as_attachment=not isPreview, mimetype=mime)
 
 
@@ -195,14 +195,15 @@ def attachmentUploadAudio():
         return {'data': 'not initialized', 'status': False}
 
     for i in flask.request.files:
+        print(flask.request.files[i].filename)
         mime = flask.request.files[i].mimetype
+        print(mime)
         if not mime.startswith('audio/'):
             return {'data': 'invalid mimetype expect `audio/`', 'status': False}
         io = BytesIO()
         flask.request.files[i].save(io)
         io.seek(0)
         id = dProvider.saveAudioAttachment(io.read(), mime)
-        # only accept the first file
         return {'data': 'success', 'id': id, 'status': True}
 
 
@@ -213,18 +214,15 @@ def attachmentUploadImage():
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
 
-    print('a')
     for i in flask.request.files:
         print(flask.request.files[i].filename)
         mime = flask.request.files[i].mimetype
-        print(mime)
         if not mime.startswith('image/'):
             return {'data': 'invalid mimetype expect `image/`', 'status': False}
-        print('d')
         io = BytesIO()
         flask.request.files[i].save(io)
         io.seek(0)
-        id = dProvider.saveAudioAttachment(io.read(), mime)
+        id = dProvider.saveImageAttachment(io.read(), mime)
         # only accept the first file
         return {'data': 'success', 'id': id, 'status': True}
 
@@ -281,6 +279,7 @@ def charEdit(id):
     pastMemories = ''
     exampleChats = ''
     useStickerSet = 0
+    useTTSService = 0
 
     try:
         data = flask.request.get_json()
@@ -290,11 +289,12 @@ def charEdit(id):
         pastMemories = data['pastMemories']
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
+        useTTSService = data['useTTSService']
     except:
         return {'data': 'invalid form', 'status': False}
 
     dProvider.updateCharacter(
-        int(id), charName, useStickerSet, charPrompt, pastMemories, exampleChats)
+        int(id), charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
 
     return {
         'data': 'success',
@@ -315,6 +315,7 @@ def charNew():
     pastMemories = ''
     exampleChats = ''
     useStickerSet = ''
+    useTTSService = ''
 
     try:
         data = flask.request.get_json()
@@ -323,10 +324,11 @@ def charNew():
         pastMemories = data['pastMemories']
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
+        useTTSService = data['useTTSService']
     except:
         return {'data': 'invalid form', 'status': False}
 
-    dProvider.createCharacter(charName, useStickerSet, charPrompt, pastMemories, exampleChats)
+    dProvider.createCharacter(charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
 
     return {
         'data': 'success',

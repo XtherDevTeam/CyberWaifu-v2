@@ -69,9 +69,7 @@ Use your creativity to adapt to different situations and topics.
 
 Optional:
 
-If you feel it's appropriate, you can express emotions through your words or use **only following** simple emotion instructions, instead of UTF-8 Emojis: {{availableStickers}}.
-These emotion instructions are fixed and do not change them in the output.
-**Do not** use UTF-8 Emojis.
+If you feel it's appropriate, you can express emotions through your words or use emojis.
 However, prioritize natural and engaging conversation over forced emotional expressions.
 
 Let the conversation begin!
@@ -86,7 +84,6 @@ Param used in this prompt:
 - charPrompt
 - memoryPrompt
 - exampleChats
-- availableStickers
 '''
 
 CONVERSATION_CONCLUSION_GENERATOR_PROMPT = \
@@ -145,7 +142,6 @@ You are given a piece of message in JSON format, several available emotions.
 Your given task is to mark the emotions for each item in the JSON list, and return the result in a JSON list.
 
 Guidelines:
-1. Read the chat history to understand the context of this message.
 1. Find `text` value in each list item of JSON message, and carefully read the message.
 2. Grasp the main emotion contained in the text.
 3. Mark it with the corresponding available emotions as `emotion` value of each item in list.
@@ -167,6 +163,37 @@ Param used in this prompt:
 - availableEmotions
 - messageJSON
 """
+
+
+
+TEXT_EMOJI_TO_INSTRUCTION_MAPPING_PROMPT = \
+'''
+You are given a piece of message which contains emojis to express emotions, and a list of available sticker instructions.
+Your given task is to convert the emojis into the available sticker instructions.
+
+Guidelines:
+1. Find each emoji in the message and understand them in accordance with the context.
+2. Convert them to corresponding available sticker instructions. 
+   If there are no available sticker instructions matches the meaning, you can *ignore* them and don't output them or replace it with available sticker instructions which have similar meaning.
+3. Output the result contained the converted message.
+
+Rules:
+1. Do not modify the instructions. You **can only** use the mentioned sticker instructions.
+
+Here is the available sticker instructions: {{availableStickers}}.
+
+The given message:
+```
+{{message}}
+```
+'''
+"""
+The system prompt for emoji to instruction mapping function
+Param used in this prompt:
+- availableStickers
+- message
+"""
+
 
 def generateTempPath(ext: str = None):
     return os.path.join('./temp', f'{uuid.uuid4().hex}.{ext}')

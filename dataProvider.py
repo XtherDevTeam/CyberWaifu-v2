@@ -323,22 +323,24 @@ class DataProvider:
         Returns:
             None | dict[str, str | int]: Character information if exists, None otherwise.
         """
-        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime from personalCharacter where id = ?', (id, ), one=True)
+        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime, ttsServiceId from personalCharacter where id = ?', (id, ), one=True)
 
-    def createCharacter(self, name: str, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
+    def createCharacter(self, name: str, useTTSService: int, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
         """
         Create a new character in the database.
 
         Args:
             name (str): Character name.
+            useTTSService (int): TTS service ID.
+            useStickerSet (int): Sticker set ID.
             prompt (str): Character prompt.
             initalMemory (str): Initial memory for the character.
             exampleChats (str): Example chats for the character.
             avatarPath (str, optional): Path to the character's avatar. Defaults to f'{config.BLOB_URL}/avatar_2.png'.
         """
         with open(avatarPath, 'rb') as file:
-            return self.db.query('insert into personalCharacter (charName, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?)',
-                                 (name, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, models.DateProider()))
+            return self.db.query('insert into personalCharacter (charName, ttsServiceId, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                 (name, useTTSService, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, models.DateProider()))
 
     def checkIfCharacterExist(self, name: int) -> bool:
         """
@@ -352,18 +354,19 @@ class DataProvider:
         """
         return bool(len(self.db.query('select count(*) from personalCharacter where name = ?')), (name, ))
 
-    def updateCharacter(self, id: int, name: str, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str) -> None:
+    def updateCharacter(self, id: int, name: str, useTTSService: int, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str) -> None:
         """
         Update character information in the database.
 
         Args:
             id (int): Character ID.
+            useTTSService (int): the TTS service to use
             name (str): New character name.
             prompt (str): New character prompt.
             pastMemories (str): New past memories for the character.
         """
-        self.db.query('update personalCharacter set charName = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ? where id = ?',
-                      (name, useStickerSet, prompt, pastMemories, exampleChats, id))
+        self.db.query('update personalCharacter set charName = ?, ttsServiceId = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ? where id = ?',
+                      (name, useTTSService, useStickerSet, prompt, pastMemories, exampleChats, id))
 
     def getCharacterId(self, name: str) -> int:
         """
@@ -608,13 +611,12 @@ class DataProvider:
         Returns:
             list[dict[str, int | str]]: List of chat messages.
         """
-        # fetch latest 30 days history
-        time30days = 60 * 60 * 24 * 30
-        print(f'{int(time.time() - offset * time30days)
-                 } -> {int(time.time() - offset * time30days - time30days)}')
+        # fetch latest 24 history 
+        time = 24
         charName = self.getCharacter(charId)['charName']
-        data = self.db.query('select * from chatHistory where charName = ? and timestamp < ? and timestamp > ? order by timestamp',
-                             (charName, int(time.time() - offset * time30days), int(time.time() - offset * time30days - time30days)))
+
+        data = self.db.query(
+            "select * from (select * from chatHistory where charName = ? order by timestamp desc limit ?, 24) order by timestamp", (charName, offset * time))
         return data
 
     def getCharacterAvatar(self, charId: int) -> tuple[str, bytes] | None:
@@ -845,7 +847,7 @@ class DataProvider:
             language (str): Language of the audio file.
         """
 
-        self.db.query("insert into GPTSoVitsReferenceAudios (serviceId, name, text, path, language) values (?,?,?,?)",
+        self.db.query("insert into GPTSoVitsReferenceAudios (serviceId, name, text, path, language) values (?,?,?,?,?)",
                       (serviceId, name, text, path, language))
 
     def deleteGPTSoVitsReferenceAudio(self, refAudioId: int) -> None:

@@ -9,7 +9,7 @@ import instance
 import exceptions
 import random
 
-from models import TokenCounter
+from models import EmojiToStickerInstrctionModel, TokenCounter
 
 
 class chatbotManager:
@@ -71,7 +71,11 @@ class chatbotManager:
 
             plain = self.getSession(
                 sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f))
+            
+            plain = EmojiToStickerInstrctionModel(plain, ''.join(f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
+            
             result = self.dataProvider.parseModelResponse(plain)
+            
             self.appendToSessionHistory(sessionName, result)
 
             self.dataProvider.saveChatHistory(
@@ -93,9 +97,11 @@ class chatbotManager:
                     plain = self.getSession(
                         sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
 
+                    plain = EmojiToStickerInstrctionModel(plain, ''.join(f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
+
                     result = self.dataProvider.parseModelResponse(plain)
 
-                    if TokenCounter(plain) < 6210:
+                    if TokenCounter(plain) < 6210 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0:
                         result = self.dataProvider.convertModelResponseToAudio(
                             self.dataProvider.getCharacter(self.getSession(sessionName).memory.getCharTTSServiceId()),
                             result)

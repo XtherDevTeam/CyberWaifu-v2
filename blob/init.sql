@@ -67,5 +67,5 @@ create table GPTSoVitsReferenceAudios (
     text                    string NOT NULL,
     serviceId               integer NOT NULL,
     path                    string NOT NULL,
-    languages               string NOT NULL
+    language                string NOT NULL
 );

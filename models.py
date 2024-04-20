@@ -19,10 +19,11 @@ import os
 from google_login import load_creds
 
 
+# whisper model is no longer needed
 # mps is not available for whisper
-interfereDevice = 'cuda' if torch.cuda.is_available() else 'cpu'
-audioModel = whisper.load_model(
-    'medium', torch.device(interfereDevice), in_memory=True)
+# interfereDevice = 'cuda' if torch.cuda.is_available() else 'cpu'
+# audioModel = whisper.load_model(
+#     'medium', torch.device(interfereDevice), in_memory=True)
 
 
 def initialize():
@@ -51,7 +52,7 @@ def TokenCounter(string: str) -> int:
 
 
 def TimeProider() -> str:
-    return time.strftime('%Y-%m-%d %I:%M', time.localtime())
+    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
 
 
 def DateProider() -> str:
@@ -64,11 +65,11 @@ def PreprocessPrompt(originalPrompt: str, tVars):
     return originalPrompt
 
 
-def BaseModelProvider() -> ChatGoogleGenerativeAI:
+def BaseModelProvider(temperature:float = 0.9) -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
         model=config.USE_LEGACY_MODEL,
         convert_system_message_to_human=True,
-        temperature=0.9,
+        temperature=temperature,
         safety_settings=MODEL_SAFETY_SETTING,
     )
     
@@ -119,6 +120,15 @@ def ImageParsingModel(image: str) -> str:
     ]).content
 
 
+def EmojiToStickerInstrctionModel(text: str, availableStickers: list[str]):
+    p = PreprocessPrompt(config.TEXT_EMOJI_TO_INSTRUCTION_MAPPING_PROMPT, {
+        'message': text,
+        'availableStickers': availableStickers
+    })
+    return BaseModelProvider(1).invoke([HumanMessage(p)]).content
+
+
 def AudioToTextModel(audioPath: str) -> str:
-    result = audioModel.transcribe(audioPath)
-    return result['text']
+    # result = audioModel.transcribe(audioPath)
+    # return result['text']
+    return "" # deprecated
