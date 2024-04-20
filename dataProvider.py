@@ -4,6 +4,7 @@ import re
 import sqlite3
 import logging
 import time
+from GPTSoVits import GPTSoVitsAPI
 import config
 import hashlib
 import exceptions
@@ -13,6 +14,8 @@ import uuid
 import threading
 import os
 import chatModel
+import langchain_core.messages
+
 
 class AttachmentType:
     """
@@ -228,6 +231,18 @@ class DataProvider:
 
         tempFilePathProvider(extension):
             Generate a temporary file path with the specified extension.
+
+        getStickerInfo(setId, name):
+            Retrieve detailed information about a specific sticker.
+
+        getSticker(setId, name):
+            Retrieve a specific sticker from a sticker set.
+
+        getStickerSetList():
+            Retrieve a list of all sticker sets with preview information.
+
+        getStickerSetInfo(setId):
+            Retrieve detailed information about a specific sticker set.
     """
 
     def __init__(self, databasePath: str) -> None:
@@ -498,7 +513,7 @@ class DataProvider:
             })
 
         return r
-    
+
     def convertMessageHistoryToModelInput(self, chain: list[dict[str, str | int]]) -> list[dict[str, str]]:
         """
         Converts a message history chain to model input format.
@@ -517,8 +532,7 @@ class DataProvider:
             elif i['type'] == ChatHistoryType.IMG:
                 r.append(chatModel.HumanMessage(i['text'], 'image'))
             elif i['type'] == ChatHistoryType.AUDIO:
-                # r += f'(audio {models.AudioToTextModel(i['text'])})\n'
-                print(f"{__name__}: Audio not supported yet")
+                r.append(chatModel.HumanMessage(i['text'], 'audio'))
 
         return r
 
@@ -794,7 +808,7 @@ class DataProvider:
         """
         return models.AudioToTextModel(audioPath)
 
-    def tempFilePathProvider(self, extension) -> str:
+    def tempFilePathProvider(self, extension: str) -> str:
         """
         Generates a temporary file path with the specified extension.
 
@@ -804,4 +818,203 @@ class DataProvider:
         Returns:
             str: Temporary file path.
         """
-        return os.path.join('./temp', f'{uuid.uuid4().hex}.{extension}')
+        return config.generateTempPath(extension)
+
+    def addGPTSoVitsService(self, name: str, url: str, description: str) -> None:
+        """
+        Adds a new GPT-SoVits service to the database.
+
+        Args:
+            name (str): Name of the service.
+            url (str): URL of the service.
+            description (str): Description of the service.
+        """
+
+        self.db.query("insert into GPTSoVitsServices (name, url, description) values (?,?,?)",
+                      (name, url, description))
+
+    def addGPTSoVitsReferenceAudio(self, serviceId: int, name: str, text: str, path: str, language: str) -> None:
+        """
+        Adds a new GPT-SoVits reference audio to a GPT-SoVits service.
+
+        Args:
+            serviceId (int): ID of the GPT-SoVits service.
+            name (str): Name of the reference audio, usually the emotion to represent.
+            text (str): Text representation of the reference audio.
+            path (str): Path to the audio file.
+            language (str): Language of the audio file.
+        """
+
+        self.db.query("insert into GPTSoVitsReferenceAudios (serviceId, name, text, path, language) values (?,?,?,?)",
+                      (serviceId, name, text, path, language))
+
+    def deleteGPTSoVitsReferenceAudio(self, refAudioId: int) -> None:
+        """
+        Deletes a GPT-SoVits reference audio from a GPT-SoVits service.
+
+        Args:
+            refAudioId (int): ID of the reference audio.
+        """
+
+        self.db.query("delete from GPTSoVitsReferenceAudios where id = ?",
+                      (refAudioId, ))
+
+    def getGPTSoVitsServices(self) -> list[dict[str, str | int]]:
+        """
+        Retrieves a list of all GPT-SoVits services.
+
+        Returns:
+            list[dict[str, str | int]]: List of GPT-SoVits services with their IDs, names, and descriptions.
+        """
+
+        return self.db.query('select id, name, description, url from GPTSoVitsServices')
+
+    def getGPTSoVitsService(self, serviceId: int) -> dict[str, str | int] | None:
+        """
+        Retrieves detailed information about a specific GPT-SoVits service.
+
+        Args:
+            serviceId (int): ID of the GPT-SoVits service.
+
+        Returns:
+            dict[str, str | int] | None: Dictionary containing information about the GPT-SoVits service if found, None otherwise.
+        """
+
+        i = self.db.query(
+            'select * from GPTSoVitsServices where id = ?', (serviceId, ), one=True)
+        if i is None:
+            return None
+
+        # retrive reference audios
+        j = self.db.query(
+            'select * from GPTSoVitsReferenceAudios where serviceId = ?', (serviceId, ))
+
+        return {
+            'id': i['id'],
+            'name': i['name'],
+            'url': i['url'],
+            'description': i['description'],
+            'reference_audios': j
+        }
+
+    def deleteGPTSoVitsService(self, serviceId: int) -> None:
+        """
+        Deletes a GPT-SoVits service.
+
+        Args:
+            serviceId (int): ID of the GPT-SoVits service.
+        """
+
+        self.db.query(
+            "delete from GPTSoVitsServices where id = ?", (serviceId, ))
+
+    def updateGPTSoVitsService(self, serviceId: int, name: str, url: str, description: str) -> None:
+        """
+        Updates a GPT-SoVits service.
+
+        Args:
+            serviceId (int): ID of the GPT-SoVits service.
+            name (str): Name of the service.
+            url (str): URL of the service.
+            description (str): Description of the service.
+        """
+
+        self.db.query("update GPTSoVitsServices set name = ?, url = ?, description = ? where id = ?",
+                      (name, url, description, serviceId))
+
+    def getAvailableTTSReferenceAudio(self, serviceId: int) -> list[str]:
+        """
+        Retrieves a list of available reference audio for a GPT-SoVits service.
+
+        Args:
+            serviceId (int): ID of the GPT-SoVits service.
+
+        Returns:
+            list[str]: List of available reference audio for the GPT-SoVits service.
+        """
+
+        return [i['name'] for i in self.db.query(
+            "select name from GPTSoVitsReferenceAudios where serviceId = ?", (serviceId, ))]
+
+    def convertModelResponseToTTSInput(self, response: list[dict[str, str]], availableEmotions: list[str]):
+        """
+        Converts a model response to a TTS input.
+
+        Args:
+            response (list[dict[str, str]]): Model response.
+            chat_history (list[dict[str, str]]): Chat history.
+
+        Returns:
+            list[dict[str, str]]: TTS input.
+        """
+
+        # remove all (xxx) flag
+        for i in response:
+            i['text'] = re.sub(r'\((.*?)\)', '', i['text'])
+
+        while True:
+            try:
+                return models.BaseModelProvider().invoke([langchain_core.messages.SystemMessage(
+                    models.PreprocessPrompt(config.TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT, {
+                        'availableEmotions': availableEmotions,
+                        'messageJSON': json.dumps(response)
+                    })
+                ), chatModel.HumanMessage("")]).content
+            except Exception as e:
+                pass
+
+    def getReferenceAudioByName(self, serviceId: int, name: str):
+        """
+        Retrieves a reference audio by its name.
+
+        Args:
+            serviceId (int): ID of the GPT-SoVits service.
+            name (str): Name of the reference audio, usually the emotion to represent.
+
+        Returns:
+            dict[str, str] | None: Dictionary containing information about the reference audio if found, None otherwise.
+        """
+
+        i = self.db.query(
+            'select * from GPTSoVitsReferenceAudios where serviceId = ? and name = ?', (serviceId, name))
+        if i is None:
+            return None
+        return {
+            'id': i['id'],
+            'name': i['name'],
+            'text': i['text'],
+            'path': i['path'],
+            'language': i['language']
+        }
+
+    def convertModelResponseToAudio(self, serviceId: int, response: list[dict[str, str]]) -> list[dict[str, str]]:
+        """
+        Converts a model response to audio.
+
+        Args:
+            response (list[dict[str, str]]): Model response.
+
+        Returns:
+            list[dict[str, str]]: Audio.
+        """
+
+        serviceInfo = self.getGPTSoVitsService(serviceId)
+        GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'])
+
+        r = self.convertModelResponseToTTSInput(response)
+        result = []
+        for i in r:
+            refAudio = self.getReferenceAudioByName(serviceId, i['emotion'])
+            if refAudio is None:
+                raise exceptions.ReferenceAudioNotFound(f'Could not find reference audio for emotion {i["emotion"]}')
+            attachment = self.saveAudioAttachment(GPTSoVitsEndpoint.tts(refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw.read(), 'audio/wav')
+            result.append({
+                'type': ChatHistoryType.AUDIO,
+                'role': ChatHistoryRole.BOT,
+                'text': attachment,
+                'timestamp': int(time.time()),
+            })
+            
+        return result
+
+            

@@ -7,6 +7,9 @@ import uuid
 import time
 import instance
 import exceptions
+import random
+
+from models import TokenCounter
 
 
 class chatbotManager:
@@ -24,14 +27,15 @@ class chatbotManager:
                 return i
 
         sessionName = uuid.uuid4().hex
-        sessionChatbot = instance.Chatbot(memory.Memory(self.dataProvider, charName), self.dataProvider.getUserName())
+        sessionChatbot = instance.Chatbot(memory.Memory(
+            self.dataProvider, charName), self.dataProvider.getUserName())
         self.pool[sessionName] = {
             'expireTime': time.time() + 60 * 10,
             'bot': sessionChatbot,
             'history': [],
             'charName': charName
         }
-        
+
         return sessionName
 
     def getSession(self, sessionName: str) -> instance.Chatbot:
@@ -64,10 +68,14 @@ class chatbotManager:
         if sessionName in self.pool:
             f = self.dataProvider.parseMessageChain(msgChain)
             self.appendToSessionHistory(sessionName, f)
-            result = self.dataProvider.parseModelResponse(self.getSession(
-                sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f)))
+
+            plain = self.getSession(
+                sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f))
+            result = self.dataProvider.parseModelResponse(plain)
             self.appendToSessionHistory(sessionName, result)
-            self.dataProvider.saveChatHistory(self.pool[sessionName]['charName'], f + result)
+
+            self.dataProvider.saveChatHistory(
+                self.pool[sessionName]['charName'], f + result)
             return result
         else:
             raise exceptions.SessionNotFound(
@@ -77,19 +85,30 @@ class chatbotManager:
         if sessionName in self.pool:
             f = self.dataProvider.parseMessageChain(msgChain)
             self.appendToSessionHistory(sessionName, f)
+
             result = None
             retries = 0
             while result == None:
                 try:
-                    result = self.dataProvider.parseModelResponse(self.getSession(
-                        sessionName).chat(self.dataProvider.convertMessageHistoryToModelInput(f)))
+                    plain = self.getSession(
+                        sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
+
+                    result = self.dataProvider.parseModelResponse(plain)
+
+                    if TokenCounter(plain) < 6210:
+                        result = self.dataProvider.convertModelResponseToAudio(
+                            self.dataProvider.getCharacter(self.getSession(sessionName).memory.getCharTTSServiceId()),
+                            result)
+                    
                 except Exception as e:
                     retries += 1
                     if retries > dataProvider.config.MAX_CHAT_RETRY_COUNT:
-                        raise exceptions.MaxRetriesExceeded(f'{__name__}: Invalid response. Max retries exceeded.')
+                        raise exceptions.MaxRetriesExceeded(
+                            f'{__name__}: Invalid response. Max retries exceeded.')
                     continue
             self.appendToSessionHistory(sessionName, result)
-            self.dataProvider.saveChatHistory(self.pool[sessionName]['charName'], f + result)
+            self.dataProvider.saveChatHistory(
+                self.pool[sessionName]['charName'], f + result)
             return result
         else:
             raise exceptions.SessionNotFound(

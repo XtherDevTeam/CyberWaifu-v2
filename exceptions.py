@@ -13,3 +13,7 @@ class MaxRetriesExceeded(RuntimeError):
 class StickerNotFound(RuntimeError):
     def __init__(self, s) -> None:
         super().__init__(s)
+        
+class ReferenceAudioNotFound(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)

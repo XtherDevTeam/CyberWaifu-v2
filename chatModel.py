@@ -1,7 +1,7 @@
+import mimetypes
 from typing import Any
 import google.generativeai as genai
-import PIL.Image as Image
-import requests
+
 
 
 def Message(role: str, content: str, content_type: str) -> dict[str, str]:
@@ -20,21 +20,6 @@ def HumanMessage(content: str, content_type: str = 'text') -> dict[str, str]:
     return Message('model', content, content_type)
 
 
-def convertMessageToInput(message: dict[str, str]) -> str | Image.Image:
-    print(message)
-    if message['content_type'] == 'text':
-        return message['content']
-    elif message['content_type'] == 'image':
-        return Image.open(requests.get(message['content'], stream=True).raw)
-    else:
-        raise ValueError(f'{__name__}: Unknown message type: {\
-                         message["type"]}')
-
-
-def convertMessageListToInput(messages: list[dict[str, str]]) -> list[str | Image.Image]:
-    return [convertMessageToInput(i) for i in messages]
-
-
 class ChatGoogleGenerativeAI():
     def __init__(self, model: str, temperature: float = 0.9, safety_settings: Any = None, system_prompt: str | None = None) -> None:
         self.model: genai.GenerativeModel = genai.GenerativeModel(model_name=model, system_instruction=system_prompt, safety_settings=safety_settings, generation_config={
@@ -46,12 +31,10 @@ class ChatGoogleGenerativeAI():
         if self.chat_session is None:
             self.chat_session = self.model.start_chat()
         # initiate chat with beginning message
-        print(convertMessageListToInput(begin_msg))
-        return self.chat_session.send_message(convertMessageListToInput(begin_msg)).text
+        return self.chat_session.send_message(begin_msg).text
 
     def chat(self, user_msg: list[dict[str, str]]) -> str:
         if self.chat_session is None:
             raise ValueError(f'{__name__}: Chat session not initiated')
         # chat with user message
-        print(convertMessageListToInput(user_msg))
-        return self.chat_session.send_message(convertMessageListToInput(user_msg)).text
+        return self.chat_session.send_message(user_msg).text

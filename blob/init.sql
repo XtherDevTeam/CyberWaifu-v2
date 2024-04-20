@@ -33,6 +33,7 @@ create table personalCharacter (
     avatar                  blob NOT NULL,
     avatarMime              string default 'image/png',
     emotionPack             integer default 0,
+    ttsServiceId            integer default 0,
     creationTime            string NOT NULL
 );
 
@@ -51,4 +52,20 @@ create table attachments (
     type                    integer NOT NULL,
     contentType             string default 'application/octet-stream',
     blobMsg                 blob    NOT NULL
+);
+
+create table GPTSoVitsServices (
+    id                      integer PRIMARY KEY AUTOINCREMENT,
+    name                    string NOT NULL,
+    url                     string NOT NULL,
+    description             string NOT NULL
+);
+
+create table GPTSoVitsReferenceAudios (
+    id                      integer PRIMARY KEY AUTOINCREMENT,
+    name                    string NOT NULL,
+    text                    string NOT NULL,
+    serviceId               integer NOT NULL,
+    path                    string NOT NULL,
+    languages               string NOT NULL
 );

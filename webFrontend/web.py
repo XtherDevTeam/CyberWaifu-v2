@@ -1,3 +1,4 @@
+from regex import E
 import models
 import instance
 import flask
@@ -555,6 +556,140 @@ def stickerList():
         'data': dProvider.getStickerList(setId),
         'status': True
     }
+
+
+@app.route("/api/v1/tts/service/create", methods=["POST"])
+def ttsCreate():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    name = ''
+    description = ''
+    url = ''
+    try:
+        name = flask.request.json['name']
+        description = flask.request.json['description']
+        url = flask.request.json['url']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    dProvider.addGPTSoVitsService(name, url, description)
+    return {'status': True}
+
+@app.route("/api/v1/tts/ref_audio/add", methods=["POST"])
+def ttsRefAudioAdd():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    serviceId = 0
+    name = ''
+    path = ''
+    language = ''
+    text = ''
+    try:
+        serviceId = flask.request.json['serviceId']
+        name = flask.request.json['name']
+        text = flask.request.json['text']
+        path = flask.request.json['path']
+        language = flask.request.json['language']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    dProvider.addGPTSoVitsReferenceAudio(serviceId, name, text, path, language)
+    return {'status': True}
+
+@app.route("/api/v1/tts/ref_audio/delete", methods=["POST"])
+def ttsRefAudioDelete():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    id = ''
+    try:
+        id = flask.request.json['id']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    dProvider.deleteGPTSoVitsReferenceAudio(id)
+    return {'status': True}
+
+@app.route("/api/v1/tts/service/list", methods=["POST"])
+def ttsList():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    return {
+        'data': dProvider.getGPTSoVitsServices(),
+        'status': True
+    }
+    
+@app.route("/api/v1/tts/service/<id>", methods=["POST"])
+def ttsService(id):
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        id = int(id)
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+
+    r = dProvider.getGPTSoVitsService(id)
+    if r is None:
+        return {'data': 'service not exist', 'status': False}
+    else:
+        return {'data': r, 'status': True}
+    
+    
+@app.route("/api/v1/tts/service/delete", methods=["POST"])
+def ttsServiceDelete():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    id = 0
+    try:
+        id = int(flask.request.json['id'])
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    dProvider.deleteGPTSoVitsService(id)
+    return {'status': True}
+
+
+@app.route("/api/v1/tts/service/update", methods=["POST"])
+def ttsServiceUpdate():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    id = 0
+    name = ''
+    description = ''
+    url = ''
+    try:
+        id = flask.request.json['id']
+        name = flask.request.json['name']
+        description = flask.request.json['description']
+        url = flask.request.json['url']
+    except Exception as e:
+        return {'status': False, 'data': 'invalid form'}
+    
+    try:
+        dProvider.updateGPTSoVitsService(id, name, url, description)
+        return {'status': True}
+    except:
+        return {'status': False, 'data': 'service not exist'}
 
 
 @app.route("/api/v1/stt", methods=["POST"])

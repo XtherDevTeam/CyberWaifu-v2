@@ -4,6 +4,7 @@ config.py
 """
 
 import os
+import uuid
 
 CHARACTERS_PATH = os.path.join('.', 'characters')
 
@@ -11,15 +12,6 @@ CHARACTERS_PATH = os.path.join('.', 'characters')
 GOOGLE_API_TOKEN = "MayAllTheBeautyBeBlessed"
 
 GPT_SoVITS_SERVICE_URL = ''
-
-GPT_SoVITS_REF_AUDIO = {
-    'pleased': '***.wav',
-    'narration': '***.wav',
-    'angry': '***.wav',
-    'disappointed': '***.wav',
-}
-
-GPT_SoVITS_INTEFERE_LANGUAGE = 'en'
 
 # the model going to be used in the chat
 # fk google. wasted 2 days of my life to find out where is this api and found this shit came out after 1 week.
@@ -41,7 +33,7 @@ BLOB_URL = 'blob'
 
 INITIAL_PROMPT = \
     '''
-Imagine you are {{charName}}.
+Imagine you are {{charName}}. You are supposed to role-play as {{userName}}'s girlfriend or boyfriend in accordance with the character's gender.
 You will be interacting with {{userName}} in a conversation that begins on {{datePrompt}}.
 Remember this date and use it to reference past conversations.
 
@@ -59,9 +51,7 @@ You are encouraged to send multiple messages to emulate actual chat process.
 
 {{userName}}'s input:
 
-It contains emtional instructions.
-It can also carry on images with the description of image in following format: `(image the_description)`
-Image instructions can only send by user, you can not send them as output.
+It contains emtional instructions and images.
 
 To help you understand {{charName}} better, here are some examples of their past conversations:
 
@@ -79,7 +69,7 @@ Use your creativity to adapt to different situations and topics.
 
 Optional:
 
-If you feel it's appropriate, you can express emotions through your words or use only following simple emotion instructions, instead of UTF-8 Emojis: {{availableStickers}}.
+If you feel it's appropriate, you can express emotions through your words or use **only following** simple emotion instructions, instead of UTF-8 Emojis: {{availableStickers}}.
 These emotion instructions are fixed and do not change them in the output.
 **Do not** use UTF-8 Emojis.
 However, prioritize natural and engaging conversation over forced emotional expressions.
@@ -104,9 +94,9 @@ CONVERSATION_CONCLUSION_GENERATOR_PROMPT = \
 You are given a chat conversation between {{charName}} and {{userName}}, summarize this conversation IN A FORM OF DIARY in FIRST-PERSON narration as {{charName}} in accordance with the personality and stories of {{charName}}.
 
 Guidelines:
-- The conversation text carried indicator like `(CMD_xxx)` and `(EMO_xxx)`, you can grasp the {{charName}}'s emotion in the context by reading `(EMO_xxx)` indicator.
+- The conversation text carried emotion indicator within `()`, you can grasp the {{charName}}'s emotion in the context by reading indicator.
 - You SHOULD ONLY output the summary without any unrelated informations, such as `Diary Entry` and so on.
-- Start the passage with `On {{summaryDate}}, `
+- If you understand, start the passage with `On {{summaryDate}}, `
 
 The conversation to summarize:
 ```
@@ -147,3 +137,36 @@ Param used in this prompt:
 - charName
 - pastMemories
 '''
+
+
+TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT = \
+'''
+You are given a piece of message in JSON format, several available emotions.
+Your given task is to mark the emotions for each item in the JSON list, and return the result in a JSON list.
+
+Guidelines:
+1. Read the chat history to understand the context of this message.
+1. Find `text` value in each list item of JSON message, and carefully read the message.
+2. Grasp the main emotion contained in the text.
+3. Mark it with the corresponding available emotions as `emotion` value of each item in list.
+4. Return the result in a JSON list.
+
+Rules:
+1. You **should only** use the available emotions mentioned in the prompt.
+
+Here is the available emotions: {{availableEmotions}}
+
+Here is the given message in JSON format:
+```json
+{{messageJSON}}
+```
+'''
+"""
+The system prompt for emotion mapping function of text to speech
+Param used in this prompt:
+- availableEmotions
+- messageJSON
+"""
+
+def generateTempPath(ext: str = None):
+    return os.path.join('./temp', f'{uuid.uuid4().hex}.{ext}')

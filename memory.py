@@ -12,9 +12,7 @@ import dataProvider
 
 class Memory:
     """
-    __init__ function provides a constructor for this class
-    @param dProvider dataProvider object
-    @param char the character name
+    @biref Provides a interface to access and interact with multi-character's memories.
     """
 
     def __init__(self, dProvider: dataProvider.DataProvider, char: str):
@@ -36,6 +34,9 @@ class Memory:
 
     def getCharPrompt(self) -> str:
         return self.char['charPrompt']
+    
+    def getCharTTSServiceId(self) -> int:
+        return self.char['ttsServiceId']
 
     def getAvailableStickers(self) -> list[dict[str, str | int]]:
         return self.dataProvider.getStickerList(self.char['emotionPack'])
