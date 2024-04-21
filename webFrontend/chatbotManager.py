@@ -30,7 +30,7 @@ class chatbotManager:
         sessionChatbot = instance.Chatbot(memory.Memory(
             self.dataProvider, charName), self.dataProvider.getUserName())
         self.pool[sessionName] = {
-            'expireTime': time.time() + 60 * 10,
+            'expireTime': time.time() + 60 * 1,
             'bot': sessionChatbot,
             'history': [],
             'charName': charName
@@ -41,7 +41,7 @@ class chatbotManager:
     def getSession(self, sessionName: str) -> instance.Chatbot:
         if sessionName in self.pool:
             r: instance.Chatbot = self.pool[sessionName]['bot']
-            self.pool[sessionName]['expireTime'] = time.time() + 60 * 10
+            self.pool[sessionName]['expireTime'] = time.time() + 60 * 1
             return r
         else:
             raise exceptions.SessionNotFound(
@@ -73,8 +73,9 @@ class chatbotManager:
                 sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f))
 
             result = []
-
-            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 5) == 2:
+            
+            print('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0) else 'False')
+            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 1) == 0:
                 # remove all emojis in `plain`
 
                 plain = EmojiRemoveModel(plain)
@@ -112,7 +113,7 @@ class chatbotManager:
                     plain = self.getSession(
                         sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
 
-                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 5) == 2:
+                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 1) == 0:
                         # remove all emojis in `plain`
 
                         plain = EmojiRemoveModel(plain)
@@ -145,9 +146,9 @@ class chatbotManager:
 
     def terminateSession(self, sessionName: str) -> None:
         if sessionName in self.pool:
-            charName = self.pool[sessionName]['bot'].memory.getCharName()
-            self.pool[sessionName]['bot'].terminateChat()
-            del self.pool[sessionName]
+            charName = self.getSession(sessionName).memory.getCharName()
+            self.getSession(sessionName).terminateChat()
+            del self.pool[sessionName] 
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
@@ -158,4 +159,4 @@ class chatbotManager:
                 if time.time() > self.pool[i]['expireTime']:
                     self.terminateSession(i)
 
-            time.sleep(5 * 60)
+            time.sleep(1 * 60)

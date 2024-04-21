@@ -53,7 +53,7 @@ class Memory:
 
     def save(self) -> None:
         self.dataProvider.updateCharacter(self.dataProvider.getCharacterId(
-            self.getCharName()), self.getCharName(), self.getCharStickerSet(), self.getCharPrompt(), self.getPastMemories(), exampleChats=self.getExampleChats())
+            self.getCharName()), self.getCharName(), self.getCharTTSServiceId(), self.getCharStickerSet(), self.getCharPrompt(), self.getPastMemories(), exampleChats=self.getExampleChats())
 
     def storeMemory(self, userName: str, conversation: str) -> None:
         self.char['pastMemories'] = self.char['pastMemories'].strip() + \

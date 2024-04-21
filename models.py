@@ -15,6 +15,7 @@ import whisper
 import config
 import time
 import os
+import webFrontend.config
 
 from google_login import load_creds
 
@@ -114,7 +115,7 @@ def ImageParsingModel(image: str) -> str:
     return llm.invoke([
         HumanMessage(
             ["You are received a image, your task is to descibe this image and output text prompt",
-             {"type": "image_url", "image_url": image}]
+             {"type": "image_url", "image_url": f'http://{webFrontend.config.APP_HOST}:{webFrontend.config.APP_PORT}/api/v1/attachment/{image}'}]
         )
     ]).content
 

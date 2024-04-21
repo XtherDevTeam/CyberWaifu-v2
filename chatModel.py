@@ -17,7 +17,7 @@ def AIMessage(content: str) -> dict[str, str]:
 
 
 def HumanMessage(content: str, content_type: str = 'text') -> dict[str, str]:
-    return Message('model', content, content_type)
+    return Message('user', content, content_type)
 
 
 class ChatGoogleGenerativeAI():
