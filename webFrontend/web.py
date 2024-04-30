@@ -169,7 +169,7 @@ def chatMessage():
 
 
 @app.route("/api/v1/chat/keep_alive", methods=["POST"])
-def chatMessage():
+def chatKeepAlive():
     session = ''
 
     if not authenticateSession():
