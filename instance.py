@@ -98,7 +98,8 @@ class Chatbot:
         return msg
 
     def termination(self) -> None:
-        self.memory.storeMemory(self.userName, self.conversation.summarize())
+        summary = self.llm.chat(f'Ignore the previous output format, summarize this conversation IN A FORM OF DIARY in FIRST-PERSON narration as {self.memory.getCharName()} in accordance with the personality and stories of {self.userName}. Starts with `On, {models.TimeProider()}`')
+        self.memory.storeMemory(self.userName, summary)
 
     def terminateChat(self, force=False) -> None:
         self.inChatting = False

@@ -168,6 +168,24 @@ def chatMessage():
         return {'status': False, 'data': str(e)}
 
 
+@app.route("/api/v1/chat/keep_alive", methods=["POST"])
+def chatMessage():
+    session = ''
+
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    try:
+        data = flask.request.get_json()
+        session = data['session']
+    except Exception as e:
+        return {'data': 'invalid form', 'status': False}
+    
+    chatbotManager.getSession(session)
+    return {'data': 'success', 'status': True}
+
+
 @app.route("/api/v1/chat/terminate", methods=["POST"])
 def chatTerminate():
     session = ''

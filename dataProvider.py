@@ -409,6 +409,8 @@ class DataProvider:
             return f['text']
         elif f['type'] == ChatHistoryType.IMG:
             return '🌄'
+        elif f['type'] == ChatHistoryType.AUDIO:
+            return 'Voice'
 
     def fetchLatestChatHistory(self, id: int) -> str | None:
         """

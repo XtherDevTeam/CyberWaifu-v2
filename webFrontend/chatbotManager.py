@@ -30,7 +30,7 @@ class chatbotManager:
         sessionChatbot = instance.Chatbot(memory.Memory(
             self.dataProvider, charName), self.dataProvider.getUserName())
         self.pool[sessionName] = {
-            'expireTime': time.time() + 60 * 1,
+            'expireTime': time.time() + 60 * 5,
             'bot': sessionChatbot,
             'history': [],
             'charName': charName
@@ -38,10 +38,12 @@ class chatbotManager:
 
         return sessionName
 
-    def getSession(self, sessionName: str) -> instance.Chatbot:
+    def getSession(self, sessionName: str, doRenew: bool = True) -> instance.Chatbot:
         if sessionName in self.pool:
             r: instance.Chatbot = self.pool[sessionName]['bot']
-            self.pool[sessionName]['expireTime'] = time.time() + 60 * 1
+            if doRenew:
+                self.pool[sessionName]['expireTime'] = time.time() + 60 * 5
+                print('Session renewed: ', self.pool[sessionName]['expireTime'])
             return r
         else:
             raise exceptions.SessionNotFound(
@@ -146,9 +148,10 @@ class chatbotManager:
 
     def terminateSession(self, sessionName: str) -> None:
         if sessionName in self.pool:
-            charName = self.getSession(sessionName).memory.getCharName()
-            self.getSession(sessionName).terminateChat()
+            charName = self.getSession(sessionName, False).memory.getCharName()
+            self.getSession(sessionName, False).terminateChat()
             del self.pool[sessionName] 
+            print(f'Terminated session {sessionName}')
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
@@ -156,6 +159,7 @@ class chatbotManager:
     def clearSessonThread(self) -> None:
         while True:
             for i in [k for k in self.pool.keys()]:
+                print(i, time.time(), self.pool[i]['expireTime'])
                 if time.time() > self.pool[i]['expireTime']:
                     self.terminateSession(i)
 
