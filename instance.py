@@ -1,4 +1,5 @@
 import mimetypes
+import os
 from re import I
 import models
 import chatModel
@@ -68,8 +69,10 @@ class Chatbot:
                 mimetypes.guess_extension(mime))
             with open(fp, 'wb+') as f:
                 f.write(binary)
-
-            return genai.upload_file(fp, mime_type=mime)
+            
+            r = genai.upload_file(fp, mime_type=mime)
+            os.remove(fp)
+            return r
         elif message['content_type'] == 'audio':
             mime, binary = self.memory.dataProvider.getAttachment(
                 message['content'])
@@ -78,7 +81,9 @@ class Chatbot:
             with open(fp, 'wb+') as f:
                 f.write(binary)
 
-            return genai.upload_file(fp, mime_type=mime)
+            r = genai.upload_file(fp, mime_type=mime)
+            os.remove(fp)
+            return r
         else:
             raise ValueError(f'{__name__}: Unknown message type: {
                 message["type"]}')

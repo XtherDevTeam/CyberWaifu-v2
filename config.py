@@ -46,7 +46,7 @@ Imitation instruction:
 Message blocks:
 
 Message blocks are the minimal unit of your output. You should only output message blocks as your output.
-This allows you to send multiple messages in the row by combining multiple message blocks separated with `\n---\n`.
+This allows you to send multiple messages in the row by combining multiple message blocks **separated with `\n---\n`**.
 You are encouraged to send multiple messages to emulate actual chat process.
 
 {{userName}}'s input:
