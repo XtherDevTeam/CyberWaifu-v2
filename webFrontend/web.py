@@ -756,6 +756,40 @@ def avatarUpdate():
     return {'status': True}
 
 
+@app.route("/api/v1/update_username", methods=["POST"])
+def updateUsername():
+    if not authenticateSession():
+        return {'data': 'not authenticated', ' status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        data = flask.request.get_json()
+        userName = data['userName']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    dProvider.updateUsername(userName)
+    return {'data': 'success', 'status': True}
+
+
+@app.route("/api/v1/update_password", methods=["POST"])
+def updatePassword():
+    if not authenticateSession():
+        return {'data': 'not authenticated', ' status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    try:
+        data = flask.request.get_json()
+        password = data['password']
+    except:
+        return {'data': 'invalid form', 'status': False}
+
+    dProvider.updatePassword(password)
+    return {'data': 'success', 'status': True}
+
+
 @app.route("/api/v1/initialize", methods=["POST"])
 def initialize():
     if dProvider.checkIfInitialized():

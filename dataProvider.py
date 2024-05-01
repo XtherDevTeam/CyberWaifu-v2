@@ -5,6 +5,7 @@ import re
 import sqlite3
 import logging
 import time
+from turtle import update
 from GPTSoVits import GPTSoVitsAPI
 import config
 import hashlib
@@ -1029,4 +1030,27 @@ class DataProvider:
             
         return result
 
-            
+    def updateUsername(self, username: str) -> None:
+        """
+        Updates the username of a user.
+
+        Args:
+            username (str): New username.
+        """
+
+        self.db.query("update config set userName = ?",
+                      (username, ))
+
+    def updatePassword(self, password: str) -> None:
+        """
+        Updates the password of a user.
+
+        Args:          
+            password (str): New password.
+        """
+
+        password = hashlib.md5(
+            f'_@YoimiyaIsMyWaifu_{password}'.encode('utf-8')).hexdigest()
+
+        self.db.query("update config set passwordSalted = ?",
+                      (password, ))
