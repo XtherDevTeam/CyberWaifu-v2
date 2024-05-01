@@ -128,11 +128,6 @@ def EmojiToStickerInstrctionModel(text: str, availableStickers: list[str]) -> st
     return BaseModelProvider(1).invoke([HumanMessage(p)]).content
 
 
-def EmojiRemoveModel(text: str) -> str:
-    p = PreprocessPrompt(config.TEXT_EMOJI_REMOVING_PROMPT, {'message': text})
-    return BaseModelProvider(1).invoke([HumanMessage(p)]).content
-
-
 def AudioToTextModel(audioPath: str) -> str:
     # result = audioModel.transcribe(audioPath)
     # return result['text']

@@ -1,6 +1,8 @@
+import re
 import threading
 
 from numpy import char
+from sympy import rem
 import dataProvider
 import memory
 import uuid
@@ -9,7 +11,12 @@ import instance
 import exceptions
 import random
 
-from models import EmojiRemoveModel, EmojiToStickerInstrctionModel, TokenCounter
+from models import EmojiToStickerInstrctionModel, TokenCounter
+
+import emoji
+
+def removeEmojis(text):
+    return emoji.replace_emoji(text, '')
 
 
 class chatbotManager:
@@ -43,7 +50,8 @@ class chatbotManager:
             r: instance.Chatbot = self.pool[sessionName]['bot']
             if doRenew:
                 self.pool[sessionName]['expireTime'] = time.time() + 60 * 5
-                print('Session renewed: ', self.pool[sessionName]['expireTime'])
+                print('Session renewed: ',
+                      self.pool[sessionName]['expireTime'])
             return r
         else:
             raise exceptions.SessionNotFound(
@@ -75,12 +83,12 @@ class chatbotManager:
                 sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f))
 
             result = []
-            
-            print('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0) else 'False')
+
+            print('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(
+                sessionName).memory.getCharTTSServiceId() != 0) else 'False')
             if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 1) == 0:
                 # remove all emojis in `plain`
-
-                plain = EmojiRemoveModel(plain)
+                plain = removeEmojis(plain)
 
                 result = self.dataProvider.convertModelResponseToAudio(
                     self.getSession(
@@ -117,8 +125,7 @@ class chatbotManager:
 
                     if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 1) == 0:
                         # remove all emojis in `plain`
-
-                        plain = EmojiRemoveModel(plain)
+                        plain = removeEmojis(plain)
 
                         result = self.dataProvider.convertModelResponseToAudio(
                             self.getSession(
@@ -150,7 +157,7 @@ class chatbotManager:
         if sessionName in self.pool:
             charName = self.getSession(sessionName, False).memory.getCharName()
             self.getSession(sessionName, False).terminateChat()
-            del self.pool[sessionName] 
+            del self.pool[sessionName]
             print(f'Terminated session {sessionName}')
         else:
             raise exceptions.SessionNotFound(

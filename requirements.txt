@@ -9,3 +9,4 @@ transformers
 torch
 google_auth_oauthlib
 openai-whisper
+emoji
