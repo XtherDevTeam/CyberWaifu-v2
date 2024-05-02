@@ -78,7 +78,6 @@ class chatbotManager:
         if sessionName in self.pool:
             f = self.dataProvider.parseMessageChain(msgChain)
             self.appendToSessionHistory(sessionName, f)
-
             plain = self.getSession(
                 sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f))
 
@@ -102,6 +101,8 @@ class chatbotManager:
                 for i in self.getSession(sessionName).getAvailableStickers():
                     # fuck unicode parentheses
                     plain = plain.replace(f'（{i}）', f'({i})')
+                    # I hate gemini-1.0
+                    plain = plain.replace(f':{i}:', f'({i})')
                 result = self.dataProvider.parseModelResponse(plain)
 
             self.appendToSessionHistory(sessionName, result)

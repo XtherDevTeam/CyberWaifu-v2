@@ -469,20 +469,6 @@ class DataProvider:
                     'timestamp': int(time.time()),
                     'role': 'user'
                 })
-            elif i.startswith('(EMO_'):
-                r.append({
-                    'type': ChatHistoryType.EMOTION,
-                    'text': i,
-                    'timestamp': int(time.time()),
-                    'role': 'user'
-                })
-            elif i.startswith('('):
-                r.append({
-                    'type': ChatHistoryType.INSTRUCTION,
-                    'text': i,
-                    'timestamp': int(time.time()),
-                    'role': 'user'
-                })
             else:
                 r.append({
                     'type': ChatHistoryType.TEXT,
