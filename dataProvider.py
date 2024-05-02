@@ -956,7 +956,7 @@ class DataProvider:
         for _ in range(config.MAX_CHAT_RETRY_COUNT):
             try:
                 prompt = models.PreprocessPrompt(config.TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT, {
-                        'availableEmotions': ''.join(i['name'] for i in availableEmotions),
+                        'availableEmotions': ', '.join(i['name'] for i in availableEmotions),
                         'messageJSON': json.dumps(response)
                     })
                 print(prompt)
@@ -966,11 +966,12 @@ class DataProvider:
                 
                 # force to retrieve json response
                 s = s[s.find('['): s.rfind(']')+1]
+                s = json.loads(s)
                 
                 for i in s:
-                    if i['emotion'] not in availableEmotions:
+                    if i['emotion'] not in [j['name'] for j in availableEmotions]:
                         raise RuntimeError(f'Invalid emotion: {i["emotion"]}')
-                return json.loads(s)
+                return s
             except Exception as e:
                 print(str(e))
                 time.sleep(5)

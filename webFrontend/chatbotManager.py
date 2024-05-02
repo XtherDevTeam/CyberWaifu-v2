@@ -99,7 +99,9 @@ class chatbotManager:
             else:
                 plain = EmojiToStickerInstrctionModel(plain, ''.join(
                     f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
-
+                for i in self.getSession(sessionName).getAvailableStickers():
+                    # fuck unicode parentheses
+                    plain = plain.replace(f'（{i}）', f'({i})')
                 result = self.dataProvider.parseModelResponse(plain)
 
             self.appendToSessionHistory(sessionName, result)
