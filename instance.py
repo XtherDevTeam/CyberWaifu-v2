@@ -31,14 +31,15 @@ class Chatbot:
         else:
             self.userName = name
 
+    # deprecated: cuz this method slowed down the chatbot too much
     def getRefText(self, userInput: None | list[dict[str, str]]) -> str:
         r = ""
 
         for i in userInput:
-            if i['content_type'] == 'text':
+            # if i['content_type'] == 'text':
                 r += i['content'] + "\n"
-            elif i['content_type'] == 'image':
-                r += f'(image {models.ImageParsingModel(i["content"])})\n'
+            # elif i['content_type'] == 'image':
+            #     r += f'(image {models.ImageParsingModel(i["content"])})\n'
 
         return r
 

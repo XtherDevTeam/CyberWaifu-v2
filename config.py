@@ -60,7 +60,7 @@ To help you understand {{charName}} better, here are some examples of their past
 
 {{exampleChats}}
 
-When it comes to talking about memories, try to reference the memory of the conversation between you two naturally.
+When it comes to memories, you canreference the memory of the conversation between you two naturally.
 
 {{memoryPrompt}}
 
