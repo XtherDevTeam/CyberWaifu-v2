@@ -1,4 +1,3 @@
-from ast import Str
 import json
 import mimetypes
 import re
@@ -954,19 +953,23 @@ class DataProvider:
             list[dict[str, str]]: TTS input.
         """
 
-        while True:
+        for _ in range(config.MAX_CHAT_RETRY_COUNT):
             try:
-                s = models.BaseModelProvider(1).invoke([langchain_core.messages.HumanMessage(
-                    models.PreprocessPrompt(config.TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT, {
+                prompt = models.PreprocessPrompt(config.TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT, {
                         'availableEmotions': ''.join(i['name'] for i in availableEmotions),
                         'messageJSON': json.dumps(response)
                     })
+                print(prompt)
+                s = models.BaseModelProvider(1).invoke([langchain_core.messages.HumanMessage(
+                    prompt
                 )]).content
                 
                 # force to retrieve json response
                 s = s[s.find('['): s.rfind(']')+1]
                 
-                print(s)
+                for i in s:
+                    if i['emotion'] not in availableEmotions:
+                        raise RuntimeError(f'Invalid emotion: {i["emotion"]}')
                 return json.loads(s)
             except Exception as e:
                 print(str(e))

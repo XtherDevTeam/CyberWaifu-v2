@@ -5,3 +5,5 @@ client_secret.json
 token.json
 .DS_Store
 *.m4a
+*.jpg
+prompt.txt

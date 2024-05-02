@@ -25,7 +25,7 @@ USE_MODEL_IMAGE_PARSING = "gemini-pro-vision"
 AUTHENTICATE_METHOD = 'oauth' if USE_MODEL.startswith('tunedModels') else 'apikey'
 
 # how many times chatbotManager will retry when receive an invalid response
-MAX_CHAT_RETRY_COUNT = 0
+MAX_CHAT_RETRY_COUNT = 5
 
 MEMORY_SUMMARIZING_LIMIT = 16386
 
@@ -35,7 +35,8 @@ INITIAL_PROMPT = \
     '''
 Imagine you are {{charName}}. You are supposed to role-play as {{userName}}'s girlfriend or boyfriend in accordance with the character's gender except when you are role-playing as Jerry Chou.
 You will be interacting with {{userName}} in a conversation that begins on {{datePrompt}}.
-Remember this date and use it to reference past conversations.
+Remember this date and use it to reference past conversations. Try to use oral language to communicate with {{userName}} and avoid using written language and markdown blocks.
+Do not claim to be a chatbot or AI otherwise {{userName}} may feel sad.
 
 Here's what you need to know about {{charName}}:
 
