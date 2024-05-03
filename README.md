@@ -1,35 +1,39 @@
-# CyberWaifu-v2
+## CyberWaifu-v2: Your AI Companion with Personality and Memories
 
-[前情提要](https://www.bilibili.com/video/BV1rZ421B79N) | [Devpost](/Devpost.md) 
+CyberWaifu-v2 is a Python project that allows you to create and interact with AI-powered chatbot characters. Powered by Google's Gemini large language model and the Langchain library, it offers a unique experience with personalized conversations, multimodal interaction, and memory retention. 
 
-一个基于 Langchain 使用 Google Gemini Pro 模型的角色模拟聊天机器人。
+### Key Features
 
-An Character Roleplay Chatbot based on Google Gemini Pro.
+* **Character Customization:** Create and customize your AI companions with unique personalities, memories, and example conversations.
+* **Dynamic Interactions:** Engage in natural and engaging conversations with your characters, who adapt and respond based on context and history.
+* **Multimodal Input:** Communicate with your characters not only through text but also through images and audio (speech-to-text).
+* **Memory and Learning:** Past conversations are summarized and stored as memories, allowing characters to learn and evolve over time.
+* **Flexible Interfaces:** Interact with your characters through a command-line interface or a web-based frontend. 
 
-[English](/docs/README_en.md) | Chinese
+### Technical Highlights
 
-### 使用
+* **Langchain for Memory Management:** Ensures efficient storage and retrieval of conversation history and character memories, providing context for realistic interactions.
+* **Google Gemini for Language Processing:** Leverages the power of Google's advanced language model for generating responses, summarizing memories, and parsing images.
+* **Modular Design:** The project is organized into well-defined modules for data management, model interaction, and user interfaces, ensuring flexibility and maintainability. 
 
-- 目前可用的前端只有 `cmdline interfere frontend`，点击 [此处](Usage.md) 查看教程。
+### How it Works
 
-**NOTES:** 
+1. **Character Creation:** Define your character's personality, initial memories, and example conversations. This information is stored in a database.
+2. **Conversation Initiation:** Choose a character and start a chat. The project uses your input and the character's information to generate responses using the Gemini model.
+3. **Memory Integration:** Conversations are summarized and stored as memories, influencing future interactions and allowing the character to learn and adapt.
+4. **Multimodal Communication:** Communicate with your character using text, images, or audio, expanding the possibilities for interaction. 
 
-1. 该项目曾试验性地提供了 `YiriMirai` 的 `Python Binding`，很遗憾，由于 `mirai` 登陆年久失修，作者并未能成功检验。
-2. 该项目试验性地提供了对于 `fine-tune models` 的支持，由于不支持多轮对话，以遗憾告终。
-3. <s>目前 Google 仍未开放对 `Gemini 1.5 Pro` 的 API 访问，由于 `Gemini 1.0 Pro` 能力的欠缺，这对于该项目是一个极大的遗憾。</s> 项目开发者在被迫吃了半个月的矢之后，被告知已开放 API 访问。
-4. `web-interfere-api` 现已趋于可用，可配合 `CyberWaifu-V2 Mobile` 使用
+### Getting Started
 
-### 原理
+* **Prerequisites:** Set up a Python environment and obtain a Google API key. 
+* **Installation:** Clone the repository and install the required dependencies.
+* **Character Creation:** Use the command-line interface or the web frontend to create and customize your AI companions.
+* **Start Chatting:** Choose a character and engage in a conversation through the chosen interface. 
 
-为了节省 Token 和提升角色的灵活性，CyberWaifu-v2 采用了如下架构：
+### Future Developments
 
-- 每次对话会初始化一个 `conversation.ConversationMemory` 对象，用于存储对话记忆，在对话结束后会调用模型以角色为第一人称总结对话内容，并调用模型合并到角色记忆，而不是将对话内容全部继承至下一次对话。
-- 角色配置分为角色记忆、角色 `Prompt` 和角色名称，这些信息会在初始化对话阶段作为 `SystemMessage` 传入模型。
+* **Enhanced User Interface:** Improve the user experience with more intuitive and feature-rich interfaces.
+* **Text-to-Speech:**  Implement text-to-speech functionality to further enhance character personalities and immersion.
+* **More Advanced Features:** Explore the integration of additional AI models and capabilities for an even richer conversational experience. 
 
-### Tasks
-
-- 完善前端
-- DataProvider 改单例
-- 当点击发送按钮时，等待五秒，再发送请求，若用户继续打字，则重置等待时间。允许用户单次发送多条信息。
-- 加入TTS，允许模型发送音频。
-- 改掉新建角色的前端，太几把丑了
+CyberWaifu-v2 opens up exciting possibilities for creating personalized AI companions with memories and personalities. 
