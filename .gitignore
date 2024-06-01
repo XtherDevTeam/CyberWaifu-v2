@@ -7,3 +7,4 @@ token.json
 *.m4a
 *.jpg
 prompt.txt
+temp/*

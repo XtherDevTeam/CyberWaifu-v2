@@ -72,6 +72,7 @@ def authenticateSession() -> int:
 @app.after_request
 def afterRequst(f):
     dProvider.db.db.commit()
+    f.headers.add('Access-Control-Allow-Credentials', 'true')
     return f
 
 

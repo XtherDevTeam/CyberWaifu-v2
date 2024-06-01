@@ -1,3 +1,4 @@
+from os import remove
 import re
 import threading
 
@@ -98,6 +99,8 @@ class chatbotManager:
             else:
                 plain = EmojiToStickerInstrctionModel(plain, ''.join(
                     f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
+                # further remove processing of emojis
+                plain = removeEmojis(plain)
                 for i in self.getSession(sessionName).getAvailableStickers():
                     # fuck unicode parentheses
                     plain = plain.replace(f'（{i}）', f'({i})')

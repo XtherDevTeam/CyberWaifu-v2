@@ -72,6 +72,7 @@ class Chatbot:
                 f.write(binary)
             
             r = genai.upload_file(fp, mime_type=mime)
+            print('Removing temporary file:', fp)
             os.remove(fp)
             return r
         elif message['content_type'] == 'audio':
@@ -83,6 +84,7 @@ class Chatbot:
                 f.write(binary)
 
             r = genai.upload_file(fp, mime_type=mime)
+            print('Removing temporary file:', fp)
             os.remove(fp)
             return r
         else:

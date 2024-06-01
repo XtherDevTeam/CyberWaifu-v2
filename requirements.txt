@@ -1,4 +1,5 @@
 langchain-google-genai
+google-generativeai>=0.5.2
 pillow
 langchain
 argparse
