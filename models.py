@@ -4,6 +4,7 @@ Provides packages for model operating
 """
 
 
+import types
 import chatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
@@ -75,12 +76,13 @@ def BaseModelProvider(temperature:float = 0.9) -> ChatGoogleGenerativeAI:
     )
     
     
-def ChatModelProvider(system_prompt: str) -> chatModel.ChatGoogleGenerativeAI:
+def ChatModelProvider(system_prompt: str, enabled_plugins: list[dict]) -> chatModel.ChatGoogleGenerativeAI:
     return chatModel.ChatGoogleGenerativeAI(
         model=config.USE_MODEL,
         temperature=0.9,
         safety_settings=MODEL_SAFETY_SETTING,
-        system_prompt=system_prompt
+        system_prompt=system_prompt,
+        tools=enabled_plugins
     )
 
 

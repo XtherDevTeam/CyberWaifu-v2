@@ -11,3 +11,8 @@ torch
 google_auth_oauthlib
 openai-whisper
 emoji
+av
+aiortc
+cv2
+numpy
+flask_socketio

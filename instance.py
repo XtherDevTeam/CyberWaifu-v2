@@ -10,12 +10,13 @@ import chatModel
 from langchain_core.messages import SystemMessage, HumanMessage
 import google.generativeai as genai
 import google.ai.generativelanguage as glm
+import webFrontend.chatPlugins
 
 
 class Chatbot:
     def __init__(self, memory: memory.Memory, userName: str) -> None:
         self.llm = models.ChatModelProvider(
-            memory.createCharPromptFromCharacter(userName))
+            memory.createCharPromptFromCharacter(userName), webFrontend.chatPlugins.defaultPluginList())
         self.memory = memory
         self.userName = userName
         self.inChatting = False
@@ -31,25 +32,8 @@ class Chatbot:
         else:
             self.userName = name
 
-    # deprecated: cuz this method slowed down the chatbot too much
-    def getRefText(self, userInput: None | list[dict[str, str]]) -> str:
-        r = ""
-
-        for i in userInput:
-            # if i['content_type'] == 'text':
-                r += i['content'] + "\n"
-            # elif i['content_type'] == 'image':
-            #     r += f'(image {models.ImageParsingModel(i["content"])})\n'
-
-        return r
-
     def begin(self, userInput: None | list[dict[str, str]]) -> str:
-        if userInput is not None or userInput == '(OPT_NO_RESPOND)':
-            self.conversation.storeUserInput(chatModel.HumanMessage(
-                chatModel.HumanMessage(self.getRefText(userInput))))
-
         modelInput = self.convertMessageListToInput(userInput)
-
         msg = self.llm.initiate(modelInput)
         self.conversation.storeBotInput(chatModel.AIMessage(msg))
         print(msg)
@@ -95,8 +79,6 @@ class Chatbot:
         return [self.convertMessageToInput(i) for i in messages]
 
     def chat(self, userInput: list[dict[str, str]]) -> str:
-        self.conversation.storeUserInput(
-            chatModel.HumanMessage(self.getRefText(userInput)))
 
         modelInput = self.convertMessageListToInput(userInput)
 
@@ -106,7 +88,7 @@ class Chatbot:
         return msg
 
     def termination(self) -> None:
-        summary = self.llm.chat(f'Ignore the previous output format, summarize this conversation IN A FORM OF DIARY in FIRST-PERSON narration as {self.memory.getCharName()} in accordance with the personality and stories of {self.userName}. Starts with `On, {models.TimeProider()}`')
+        summary = self.llm.chat(f'EOF')
         self.memory.storeMemory(self.userName, summary)
 
     def terminateChat(self, force=False) -> None:

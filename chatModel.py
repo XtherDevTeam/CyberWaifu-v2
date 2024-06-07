@@ -21,10 +21,10 @@ def HumanMessage(content: str, content_type: str = 'text') -> dict[str, str]:
 
 
 class ChatGoogleGenerativeAI():
-    def __init__(self, model: str, temperature: float = 0.9, safety_settings: Any = None, system_prompt: str | None = None) -> None:
+    def __init__(self, model: str, temperature: float = 0.9, safety_settings: Any = None, system_prompt: str | None = None, tools: list[function] = []) -> None:
         self.model: genai.GenerativeModel = genai.GenerativeModel(model_name=model, system_instruction=system_prompt, safety_settings=safety_settings, generation_config={
             'temperature': temperature,
-        })
+        }, tools=tools)
         self.chat_session: genai.ChatSession | None = None
 
     def initiate(self, begin_msg: list[dict[str, str]]) -> str:
