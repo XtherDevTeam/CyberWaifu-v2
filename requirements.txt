@@ -13,6 +13,7 @@ openai-whisper
 emoji
 av
 aiortc
-cv2
+opencv-python
 numpy
 flask_socketio
+gevent-websocket

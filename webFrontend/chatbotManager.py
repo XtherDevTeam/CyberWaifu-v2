@@ -22,13 +22,33 @@ def removeEmojis(text):
 
 class chatbotManager:
     def __init__(self, dProvider: dataProvider.DataProvider) -> None:
+        """
+        Initialize chatbot manager
+
+        Args:
+            dProvider (dataProvider.DataProvider): data provider object
+        """
+        
+        # normal chat session pool
         self.pool = {}
+        # real time streaming session pool
+        self.rtPool = {}
+        
         self.dataProvider = dProvider
         self.clearTh = threading.Thread(
             target=self.clearSessonThread, args=())
         self.clearTh.start()
 
     def createSession(self, charName: str) -> str:
+        """
+        Create a new chat session for a character
+
+        Args:
+            charName (str): character name
+
+        Returns:
+            str: session name
+        """
         # chat session reusing
         for i in self.pool.keys():
             if self.pool[i]['charName'] == charName:
@@ -45,6 +65,52 @@ class chatbotManager:
         }
 
         return sessionName
+    
+    
+    def checkIfRtSessionExist(self, sessionName: str) -> bool:
+        """
+        Check if a real time session exists for a character
+
+        Args:
+            sessionName (str): session name
+
+        Returns:
+            bool: True if the session exists, False otherwise
+        """
+        return sessionName in self.rtPool
+    
+    
+    def createRtSession(self, charName: str, sessionName: str) -> str:
+        """
+        Create a new real time chat session for a character
+
+        Args:
+            charName (str): character name
+            sessionName (str): session name
+
+        Raises:
+            exceptions.SessionHasAlreadyExist: if there's already a real time session for the character
+
+        Returns:
+            function: A callback to set current user sharing media frame.
+        """
+        # if there's a real time session, throw 500
+        for i in self.rtPool.keys():
+            if self.rtPool[i]['charName'] == charName:
+                raise exceptions.SessionHasAlreadyExist(f"Session {i} already exists")
+        
+        sessionChatbot = instance.Chatbot(memory.Memory(
+            self.dataProvider, charName, rtSession=True), self.dataProvider.getUserName(), [
+                
+            ])
+        self.rtPool[sessionName] = {
+            'bot': sessionChatbot,
+            'charName': charName
+        }
+
+        return sessionName
+
+
 
     def getSession(self, sessionName: str, doRenew: bool = True) -> instance.Chatbot:
         if sessionName in self.pool:
@@ -57,6 +123,25 @@ class chatbotManager:
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
+            
+    def getRtSession(self, sessionName: str) -> instance.Chatbot:
+        """
+        Get a real time chat session
+
+        Args:
+            sessionName (str): session name
+
+        Raises:
+            exceptions.SessionNotFound: if the session is not found or expired
+
+        Returns:
+            instance.Chatbot: chatbot object for the real time session
+        """
+        if sessionName in self.rtPool:
+            return self.rtPool[sessionName]['bot']
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Real time chat session {sessionName} not found or expired')
 
     def getSessionHistory(self, sessionName: str) -> list[dict[str, str | int | bool]]:
         if sessionName in self.pool:
@@ -168,6 +253,11 @@ class chatbotManager:
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
+            
+    def terminateRealTimeSession(self, sessionName: str) -> None:
+        if sessionName in self.rtPool:
+            charName = self.getSession(sessionName, False)['charName']
+            self.rtPool[sessionName]['bot'].terminateChat()
 
     def clearSessonThread(self) -> None:
         while True:
@@ -175,5 +265,6 @@ class chatbotManager:
                 print(i, time.time(), self.pool[i]['expireTime'])
                 if time.time() > self.pool[i]['expireTime']:
                     self.terminateSession(i)
+            # do not clean real time session pool until users terminate it themselves
 
             time.sleep(1 * 60)

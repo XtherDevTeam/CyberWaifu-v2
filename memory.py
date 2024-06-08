@@ -15,9 +15,10 @@ class Memory:
     @biref Provides a interface to access and interact with multi-character's memories.
     """
 
-    def __init__(self, dProvider: dataProvider.DataProvider, char: str):
+    def __init__(self, dProvider: dataProvider.DataProvider, char: str, rtSession: bool = False):
         # create if not exist
         self.dataProvider = dProvider
+        self.rtSession = rtSession
         # read character messages
         print(char, self.dataProvider.getCharacterId(char), '114514')
         self.char = self.dataProvider.getCharacter(
@@ -64,16 +65,27 @@ class Memory:
         self.save()
 
     def createCharPromptFromCharacter(self, userName):
-        availableStickers = ''
-        for i in self.getAvailableStickers():
-            availableStickers += f'({i['name']}), '
-        availableStickers = availableStickers[0: -2]
-        return models.PreprocessPrompt(config.INITIAL_PROMPT, {
-            'charName': self.getCharName(),
-            'userName': userName,
-            'datePrompt': models.TimeProider(),
-            'charPrompt': self.getCharPrompt(),
-            'memoryPrompt': self.getPastMemories(),
-            'exampleChats': self.getExampleChats(),
-            'availableStickers': availableStickers
-        })
+        if self.rtSession:
+            # TODO: implement real-time prompt generation
+            return models.PreprocessPrompt(config.VOICE_CHAT_INITIAL_PROMPT, {
+                'charName': self.getCharName(),
+                'userName': userName,
+                'datePrompt': models.TimeProider(),
+                'charPrompt': self.getCharPrompt(),
+                'memoryPrompt': self.getPastMemories(),
+                'exampleChats': self.getExampleChats()
+            })
+        else:
+            availableStickers = ''
+            for i in self.getAvailableStickers():
+                availableStickers += f'({i['name']}), '
+            availableStickers = availableStickers[0: -2]
+            return models.PreprocessPrompt(config.INITIAL_PROMPT, {
+                'charName': self.getCharName(),
+                'userName': userName,
+                'datePrompt': models.TimeProider(),
+                'charPrompt': self.getCharPrompt(),
+                'memoryPrompt': self.getPastMemories(),
+                'exampleChats': self.getExampleChats(),
+                'availableStickers': availableStickers
+            })

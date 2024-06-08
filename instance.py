@@ -1,6 +1,8 @@
 import mimetypes
 import os
 from re import I
+from typing import Any
+import typing
 import models
 import chatModel
 import config
@@ -14,9 +16,11 @@ import webFrontend.chatPlugins
 
 
 class Chatbot:
-    def __init__(self, memory: memory.Memory, userName: str) -> None:
+    def __init__(self, memory: memory.Memory, userName: str, additionalPlugins: list[typing.Any] = []) -> None:
+        pluginList = webFrontend.chatPlugins.defaultPluginList()
+        pluginList.extend(additionalPlugins)
         self.llm = models.ChatModelProvider(
-            memory.createCharPromptFromCharacter(userName), webFrontend.chatPlugins.defaultPluginList())
+            memory.createCharPromptFromCharacter(userName), pluginList)
         self.memory = memory
         self.userName = userName
         self.inChatting = False

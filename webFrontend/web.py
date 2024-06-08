@@ -1,9 +1,8 @@
-from regex import E
-import models
-import instance
+import asyncio
 import flask
 from flask_cors import CORS, cross_origin
 import time
+
 import webFrontend.chatbotManager as chatbotManager
 import dataProvider
 import config
@@ -45,7 +44,8 @@ def makeFileResponse(file: bytes, mime: str):
 
         response_file = bytes()
 
-        response_file = file[reqRange[0]:reqRange[1] if reqRange[0] != reqRange[1] else reqRange[1] + 1]
+        response_file = file[reqRange[0]:reqRange[1]
+                             if reqRange[0] != reqRange[1] else reqRange[1] + 1]
 
         response = flask.make_response(response_file)
         response.headers['Accept-Ranges'] = 'bytes'
@@ -58,7 +58,7 @@ def makeFileResponse(file: bytes, mime: str):
 
         response.status_code = 206
         return response
-    
+
     return flask.send_file(BytesIO(file), as_attachment=not isPreview, mimetype=mime)
 
 
@@ -182,7 +182,7 @@ def chatKeepAlive():
         session = data['session']
     except Exception as e:
         return {'data': 'invalid form', 'status': False}
-    
+
     chatbotManager.getSession(session)
     return {'data': 'success', 'status': True}
 
@@ -347,7 +347,8 @@ def charNew():
     except:
         return {'data': 'invalid form', 'status': False}
 
-    dProvider.createCharacter(charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
+    dProvider.createCharacter(
+        charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
 
     return {
         'data': 'success',
@@ -595,9 +596,10 @@ def ttsCreate():
         url = flask.request.json['url']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     dProvider.addGPTSoVitsService(name, url, description)
     return {'status': True}
+
 
 @app.route("/api/v1/tts/ref_audio/add", methods=["POST"])
 def ttsRefAudioAdd():
@@ -619,9 +621,10 @@ def ttsRefAudioAdd():
         language = flask.request.json['language']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     dProvider.addGPTSoVitsReferenceAudio(serviceId, name, text, path, language)
     return {'status': True}
+
 
 @app.route("/api/v1/tts/ref_audio/delete", methods=["POST"])
 def ttsRefAudioDelete():
@@ -635,9 +638,10 @@ def ttsRefAudioDelete():
         id = flask.request.json['id']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     dProvider.deleteGPTSoVitsReferenceAudio(id)
     return {'status': True}
+
 
 @app.route("/api/v1/tts/service/list", methods=["POST"])
 def ttsList():
@@ -650,7 +654,8 @@ def ttsList():
         'data': dProvider.getGPTSoVitsServices(),
         'status': True
     }
-    
+
+
 @app.route("/api/v1/tts/service/<id>", methods=["POST"])
 def ttsService(id):
     if not authenticateSession():
@@ -668,21 +673,21 @@ def ttsService(id):
         return {'data': 'service not exist', 'status': False}
     else:
         return {'data': r, 'status': True}
-    
-    
+
+
 @app.route("/api/v1/tts/service/delete", methods=["POST"])
 def ttsServiceDelete():
     if not authenticateSession():
         return {'data': 'not authenticated', 'status': False}
     if not dProvider.checkIfInitialized():
         return {'data': 'not initialized', 'status': False}
-    
+
     id = 0
     try:
         id = int(flask.request.json['id'])
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     dProvider.deleteGPTSoVitsService(id)
     return {'status': True}
 
@@ -705,7 +710,7 @@ def ttsServiceUpdate():
         url = flask.request.json['url']
     except Exception as e:
         return {'status': False, 'data': 'invalid form'}
-    
+
     try:
         dProvider.updateGPTSoVitsService(id, name, url, description)
         return {'status': True}
@@ -789,6 +794,7 @@ def updatePassword():
 
     dProvider.updatePassword(password)
     return {'data': 'success', 'status': True}
+
 
 
 @app.route("/api/v1/initialize", methods=["POST"])

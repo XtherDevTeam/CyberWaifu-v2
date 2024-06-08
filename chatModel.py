@@ -1,5 +1,6 @@
 import mimetypes
 from typing import Any
+import typing
 import google.generativeai as genai
 
 
@@ -21,7 +22,7 @@ def HumanMessage(content: str, content_type: str = 'text') -> dict[str, str]:
 
 
 class ChatGoogleGenerativeAI():
-    def __init__(self, model: str, temperature: float = 0.9, safety_settings: Any = None, system_prompt: str | None = None, tools: list[function] = []) -> None:
+    def __init__(self, model: str, temperature: float = 0.9, safety_settings: Any = None, system_prompt: str | None = None, tools: list[typing.Any] = []) -> None:
         self.model: genai.GenerativeModel = genai.GenerativeModel(model_name=model, system_instruction=system_prompt, safety_settings=safety_settings, generation_config={
             'temperature': temperature,
         }, tools=tools)

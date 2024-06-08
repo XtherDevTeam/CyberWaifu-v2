@@ -15,6 +15,7 @@ class GPTSoVitsAPI():
             "text": text,
             "text_language": text_language
         }, stream=True)
+        
 
     # change reference audio
     def changeReferenceAudio(self, ref_audio: str, ref_text: str, ref_language: str = 'auto') -> None:
