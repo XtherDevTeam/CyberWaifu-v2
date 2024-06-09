@@ -1,7 +1,7 @@
 import mimetypes
 import os
 from re import I
-from typing import Any
+from typing import Any, Optional
 import typing
 import models
 import chatModel
@@ -15,10 +15,11 @@ import google.ai.generativelanguage as glm
 import webFrontend.chatPlugins
 
 
-class Chatbot:
+class Chatbot:    
     def __init__(self, memory: memory.Memory, userName: str, additionalPlugins: list[typing.Any] = []) -> None:
         pluginList = webFrontend.chatPlugins.defaultPluginList()
         pluginList.extend(additionalPlugins)
+            
         self.llm = models.ChatModelProvider(
             memory.createCharPromptFromCharacter(userName), pluginList)
         self.memory = memory

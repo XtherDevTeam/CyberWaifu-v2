@@ -1,15 +1,20 @@
 import asyncio
+import uuid
 import flask
 from flask_cors import CORS, cross_origin
 import time
 
+import livekit.api.room_service
+
 import webFrontend.chatbotManager as chatbotManager
 import dataProvider
 import config
+import webFrontend.chatbotManager
 import webFrontend.config
 import exceptions
 import os
 from io import BytesIO
+import livekit.api
 
 app = flask.Flask(__name__)
 cors = CORS(app)
@@ -17,7 +22,7 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
 dProvider = dataProvider.DataProvider(f'{config.BLOB_URL}/data.db')
 chatbotManager = chatbotManager.chatbotManager(dProvider)
-
+livekitApi = livekit.api.LiveKitAPI(webFrontend.config.LIVEKIT_API_URL, webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET)
 
 def parseRequestRange(s, flen):
     s = s[s.find('=')+1:]
@@ -814,6 +819,44 @@ def initialize():
     dProvider.initialize(userName, password)
     flask.session['user'] = int(time.time())
     return {'data': 'success', 'status': True}
+
+
+@app.route("/api/v1/rtvc/establish", methods=["POST"])
+def establishRealTimeVoiceChat():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+
+    charName = ''
+    try:
+        data = flask.request.get_json()
+        charName = data['charName']
+    except:
+        return {'data': 'invalid form', 'status': False}
+    
+    sessionName = uuid.uuid4().hex
+    session = webFrontend.chatbotManager.VoiceChatSession(sessionName, charName, dProvider)
+    userName = dProvider.getUserName()
+    
+    userToken = livekit.api.AccessToken(
+            webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
+                'user').with_name(userName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
+            
+    botToken = livekit.api.AccessToken(
+            webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
+                'model').with_name(charName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
+    
+    async def r():
+        # livekit api is in this file, so we can't put this logic into createRtSession
+        await livekitApi.room.create_room(livekit.api.CreateRoomRequest(sessionName, 10*60, max_participants=2))
+        session.start(botToken)
+        
+    asyncio.get_event_loop().run_until_complete(r())
+    
+    chatbotManager.createRtSession(charName, sessionName, session)
+    
+    return {'data': {'session': sessionName, 'token': userToken, 'url': webFrontend.config.LIVEKIT_API_EXTERNAL_URL},'status': True}
 
 
 def invoke():
