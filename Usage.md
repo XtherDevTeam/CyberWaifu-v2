@@ -17,3 +17,10 @@
 
 1. Complete the prerequisite steps and make sure you have already added your character
 2. Execute `python app.py -c [charName] -u [yourName] -f`
+
+# Set up livekit server
+
+1. Complete the prerequisite steps
+2. Downloads and installs [livekit-server](https://github.com/livekit/livekit-server)
+3. Follow the instructions in the livekit-server repository to set up the server
+4. Use `make start_livekit` to start the livekit server

@@ -1,5 +1,6 @@
 import asyncio
 from os import remove
+import os
 import queue
 import re
 import threading
@@ -7,9 +8,12 @@ from typing import Optional
 
 import av
 from cv2 import broadcast
+import cv2
 import livekit.api
 import livekit.rtc
+from mirai import Voice
 from numpy import char
+import numpy
 from pyparsing import Opt
 import requests
 from sympy import rem
@@ -63,7 +67,7 @@ class VoiceChatSession:
         self.charName = charName
         self.bot = instance.Chatbot(memory.Memory(
             dataProvider, charName), dataProvider.getUserName(), [self.chatPluginGetUserMedia])
-        self.chatRoom = Optional[livekit.rtc.Room] = None
+        self.chatRoom: Optional[livekit.rtc.Room] = None
         self.dataProvider = dataProvider
         self.currentImageFrame: Optional[livekit.rtc.VideoFrame] = None
         self.broadcastAudioTrack: Optional[livekit.rtc.AudioTrack] = None
@@ -86,17 +90,16 @@ class VoiceChatSession:
         Returns:
             None
         """
-        
+
         resp = []
         # no to use self.bot.chat here cuz we've already uploaded the files.
         if self.bot.inChatting:
-            resp = self.bot.llm.chat(audios) 
+            resp = self.bot.llm.chat(audios)
         else:
             resp = self.bot.llm.initiate(audios)
             self.bot.inChatting = True
         for i in self.dataProvider.parseModelResponse(resp):
-                self.broadcastMissions.put(i)
-            
+            self.broadcastMissions.put(i)
 
     async def VAD(self, stream: livekit.rtc.AudioStream) -> None:
         """
@@ -114,37 +117,41 @@ class VoiceChatSession:
         voiced_frames: list[bytes] = []
         bs = []
         # i don't even know whether it's a good idea to use 648 as the maxlen.
-        maxlen = 648
+        maxlen = 30
         triggered = False
         async for frame in stream:
             byteFrame = frame.frame.data.tobytes()
-            isSpeech = self.vadModel.is_speech(frame.frame.data.tobytes(), webFrontend.config.LIVEKIT_SAMPLE_RATE)
+            isSpeech = self.vadModel.is_speech(
+                frame.frame.data.tobytes(), webFrontend.config.LIVEKIT_SAMPLE_RATE)
             if not triggered:
                 ring_buffer.append((byteFrame, isSpeech))
                 num_voiced = len([f for f, speech in ring_buffer if speech])
                 if num_voiced > 0.9 * maxlen:
                     triggered = True
-                    voiced_frames.extend([f for f, speech in ring_buffer if speech])
+                    voiced_frames.extend(
+                        [f for f, speech in ring_buffer if speech])
                     ring_buffer = []
             else:
                 voiced_frames.append(byteFrame)
                 ring_buffer.append((byteFrame, isSpeech))
-                num_unvoiced = len([f for f, speech in ring_buffer if not speech])
+                num_unvoiced = len(
+                    [f for f, speech in ring_buffer if not speech])
                 if num_unvoiced > 0.9 * maxlen:
                     triggered = False
                     bs.append(b''.join(f for f in voiced_frames))
+
                     def proc(b: bytes):
                         temp = self.dataProvider.tempFilePathProvider('wav')
                         with open(temp, 'wb') as f:
                             f.write(b)
-                        
+
                         glmFile = google.generativeai.upload_file(temp)
+                        os.remove(temp)
+                        return glmFile
                     files = [proc(b) for b in bs]
                     self.chat(files)
                     ring_buffer = []
                     voiced_frames = []
-                
-                
 
     async def receiveVideoStream(self, stream: livekit.rtc.VideoStream) -> None:
         """
@@ -207,8 +214,7 @@ class VoiceChatSession:
             livekit.rtc.AudioFrame: empty audio frame
         """
         return livekit.rtc.AudioFrame(
-            format=livekit.rtc.AudioFormat.PCMU,
-            timestamp=0,
+            num_channels=1,
             data=b'\x00' * 160,
             sample_rate=webFrontend.config.LIVEKIT_SAMPLE_RATE
         )
@@ -251,8 +257,35 @@ class VoiceChatSession:
             glm.File: Image file of user's camera or sharing screen.
         """
 
-        # TODO: implement this function
-        pass
+        if self.currentImageFrame is None:
+            raise exceptions.NoUserMediaFound(
+                f"No image frame found for {self.charName}")
+
+        img = self.currentImageFrame.convert(
+            livekit.rtc.VideoBufferType.RGBA).data.tobytes()
+        img_np = numpy.frombuffer(img, dtype=numpy.uint8).reshape(
+            self.currentImageFrame.height,
+            self.currentImageFrame.width,
+            4
+        )
+        encoded, buffer = cv2.imencode('.jpg', img_np)
+        temp = self.dataProvider.tempFilePathProvider('jpg')
+        with open(temp, 'wb') as f:
+            f.write(buffer)
+
+        glmFile = google.generativeai.upload_file(temp)
+        os.remove(temp)
+        return glmFile
+
+    def terminateSession(self) -> None:
+        """
+        Terminate the chat session.
+        """
+        async def f():
+            await self.chatRoom.disconnect()
+            self.bot.terminateChat()
+
+        asyncio.get_event_loop().run_until_complete(f())
 
 
 class chatbotManager:
@@ -353,7 +386,7 @@ class chatbotManager:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
 
-    def getRtSession(self, sessionName: str) -> instance.Chatbot:
+    def getRtSession(self, sessionName: str) -> VoiceChatSession:
         """
         Get a real time chat session
 
@@ -367,7 +400,24 @@ class chatbotManager:
             instance.Chatbot: chatbot object for the real time session
         """
         if sessionName in self.rtPool:
-            return self.rtPool[sessionName]['bot']
+            return self.rtPool[sessionName]['voiceChatSession']
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Real time chat session {sessionName} not found or expired')
+
+    def terminateRtSession(self, sessionName: str) -> None:
+        """
+        Terminate a real time chat session
+
+        Args:
+            sessionName (str): session name
+
+        Raises:
+            exceptions.SessionNotFound: if the session is not found or expired
+        """
+        if sessionName in self.rtPool:
+            self.getRtSession(sessionName).terminateSession()
+            del self.rtPool[sessionName]
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Real time chat session {sessionName} not found or expired')
@@ -482,11 +532,6 @@ class chatbotManager:
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
-
-    def terminateRealTimeSession(self, sessionName: str) -> None:
-        if sessionName in self.rtPool:
-            charName = self.getSession(sessionName, False)['charName']
-            self.rtPool[sessionName]['bot'].terminateChat()
 
     def clearSessonThread(self) -> None:
         while True:

@@ -859,6 +859,27 @@ def establishRealTimeVoiceChat():
     return {'data': {'session': sessionName, 'token': userToken, 'url': webFrontend.config.LIVEKIT_API_EXTERNAL_URL},'status': True}
 
 
+@app.route("/api/v1/rtvc/terminate", methods=["POST"])
+def terminateRealTimeVoiceChat():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', ' status': False}
+
+    try:
+        data = flask.request.get_json()
+        sessionName = data['session']
+    except:
+        return {'data': 'invalid form', 'status': False}
+    
+    try:
+        chatbotManager.terminateRtSession(sessionName)
+    except:
+        return {'data': 'invalid session', 'status': False}
+    
+    return {'data': 'success', 'status': True}
+
+
 def invoke():
     app.run(webFrontend.config.APP_HOST,
             webFrontend.config.APP_PORT, debug=False)

@@ -8,8 +8,8 @@ APP_PORT = 6211
 SECRET_KEY = 'MayAllTheBeautyBeBlessed'
 
 # intermediary token for communication between livekit-streaming-server and backend
-LIVEKIT_API_KEY = 'YoimiyaGaTaisukiDesu'
-LIVEKIT_API_SECRET = 'YoimiyaGaTaisukiDesu'
-LIVEKIT_API_URL = 'http://localhost:6212/'
-LIVEKIT_API_EXTERNAL_URL = 'http://www.xiaokang00010.top:6212/'
+LIVEKIT_API_KEY = 'YoimiyaGaTaisukiDesu06210621062106210621'
+LIVEKIT_API_SECRET = 'YoimiyaGaTaisukiDesu06210621062106210621'
+LIVEKIT_API_URL = 'localhost:6212'
+LIVEKIT_API_EXTERNAL_URL = 'www.xiaokang00010.top:6212'
 LIVEKIT_SAMPLE_RATE = 16000

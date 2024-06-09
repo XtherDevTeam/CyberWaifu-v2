@@ -18,6 +18,10 @@ class StickerNotFound(RuntimeError):
     def __init__(self, s) -> None:
         super().__init__(s)
         
+class NoUserMediaFound(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)
+        
 class ReferenceAudioNotFound(RuntimeError):
     def __init__(self, s) -> None:
         super().__init__(s)
