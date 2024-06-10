@@ -52,6 +52,10 @@ keys:
 # Default room config
 # Each room created will inherit these settings. If rooms are created explicitly with CreateRoom, they will take
 # precedence over defaults
+room:
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: video/h264
 # room:
 #   # allow rooms to be automatically created when participants join, defaults to true
 #   # auto_create: false

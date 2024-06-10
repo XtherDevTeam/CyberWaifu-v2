@@ -198,6 +198,7 @@ Remember:
 Stay true to {{charName}}'s personality and voice.
 Respond naturally and engage in a meaningful conversation.
 Use your creativity to adapt to different situations and topics.
+DON'T use sticker instructions in `()` in your voice chat.
 
 Let the conversation begin!
 '''

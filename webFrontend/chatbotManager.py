@@ -1,10 +1,14 @@
 import asyncio
+import contextlib
+import io
+import mimetypes
 from os import remove
 import os
 import queue
 import re
 import threading
 from typing import Optional
+import wave
 
 import av
 from cv2 import broadcast
@@ -66,12 +70,13 @@ class VoiceChatSession:
         self.sessionName = sessionName
         self.charName = charName
         self.bot = instance.Chatbot(memory.Memory(
-            dataProvider, charName), dataProvider.getUserName(), [self.chatPluginGetUserMedia])
+            dataProvider, charName, True), dataProvider.getUserName(), [self.chatPluginGetUserMedia])
         self.chatRoom: Optional[livekit.rtc.Room] = None
         self.dataProvider = dataProvider
         self.currentImageFrame: Optional[livekit.rtc.VideoFrame] = None
         self.broadcastAudioTrack: Optional[livekit.rtc.AudioTrack] = None
-        self.broadcastMissions: queue.Queue[dict[str, str | int | bool]] = []
+        self.broadcastMissions: queue.Queue[dict[str,
+                                                 str | int | bool]] = queue.Queue()
         self.currentBroadcastMission: Optional[av.InputContainer |
                                                av.OutputContainer] = None
         self.ttsServiceId = self.bot.memory.getCharTTSServiceId()
@@ -79,6 +84,9 @@ class VoiceChatSession:
             self.ttsServiceId)
         self.GPTSoVITsAPI = GPTSoVitsAPI(self.ttsService['url'])
         self.vadModel = webrtcvad.Vad(3)
+        self.chat_lock = threading.Lock()
+        self.message_queue: list[glm.File] = []
+        print('initialized voice chat session')
 
     async def chat(self, audios: list[glm.File]) -> None:
         """
@@ -91,17 +99,23 @@ class VoiceChatSession:
             None
         """
 
-        resp = []
-        # no to use self.bot.chat here cuz we've already uploaded the files.
-        if self.bot.inChatting:
-            resp = self.bot.llm.chat(audios)
+        self.message_queue.extend(audios)
+        if self.chat_lock.locked():
+            pass
         else:
-            resp = self.bot.llm.initiate(audios)
-            self.bot.inChatting = True
-        for i in self.dataProvider.parseModelResponse(resp):
-            self.broadcastMissions.put(i)
+            resp = []
+            # no to use self.bot.chat here cuz we've already uploaded the files.
+            if self.bot.inChatting:
+                resp = self.bot.llm.chat(self.message_queue)
+            else:
+                resp = self.bot.llm.initiate(self.message_queue)
+                self.bot.inChatting = True
+            print('raw response:', resp)
+            for i in self.dataProvider.parseModelResponse(resp):
+                self.broadcastMissions.put(i)
+            self.message_queue = []
 
-    async def VAD(self, stream: livekit.rtc.AudioStream) -> None:
+    async def VAD(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
         Voice activity detection.
         Fetch and identify each audio frame, when activity detected, save to local temporary file and upload as glm.File then send to Gemini model as Input.
@@ -117,12 +131,17 @@ class VoiceChatSession:
         voiced_frames: list[bytes] = []
         bs = []
         # i don't even know whether it's a good idea to use 648 as the maxlen.
-        maxlen = 30
+        maxlen = 60
         triggered = False
+        ext = mimetypes.guess_extension(mimeType)
+        print('using audio extension:', ext)
+        if ext is None:
+            raise exceptions.UnsupportedMimeType(
+                f"Unsupported audio mime type: {mimeType}")
         async for frame in stream:
             byteFrame = frame.frame.data.tobytes()
             isSpeech = self.vadModel.is_speech(
-                frame.frame.data.tobytes(), webFrontend.config.LIVEKIT_SAMPLE_RATE)
+                byteFrame, frame.frame.sample_rate)
             if not triggered:
                 ring_buffer.append((byteFrame, isSpeech))
                 num_voiced = len([f for f, speech in ring_buffer if speech])
@@ -139,19 +158,36 @@ class VoiceChatSession:
                 if num_unvoiced > 0.9 * maxlen:
                     triggered = False
                     bs.append(b''.join(f for f in voiced_frames))
+                    print('what the heck')
 
                     def proc(b: bytes):
                         temp = self.dataProvider.tempFilePathProvider('wav')
-                        with open(temp, 'wb') as f:
-                            f.write(b)
 
+                        def write_wave(path: str, audio: bytes):
+                            with contextlib.closing(wave.open(path, 'wb')) as f:
+                                f.setnchannels(frame.frame.num_channels)
+                                f.setsampwidth(2)
+                                f.setframerate(frame.frame.sample_rate)
+                                f.writeframes(audio)
+
+                        write_wave(temp, b)
+
+                        print(f"uploading {temp}")
                         glmFile = google.generativeai.upload_file(temp)
                         os.remove(temp)
                         return glmFile
-                    files = [proc(b) for b in bs]
-                    self.chat(files)
+                        # return 1
+
+                    async def proc_wrapper(proc_bs: list[bytes]):
+                        files = [proc(b) for b in proc_bs]
+                        print(f'uploaded audios: {files}')
+                        await self.chat(files)
+
+                    asyncio.ensure_future(proc_wrapper(bs))
+
                     ring_buffer = []
                     voiced_frames = []
+                    bs = []
 
     async def receiveVideoStream(self, stream: livekit.rtc.VideoStream) -> None:
         """
@@ -163,48 +199,74 @@ class VoiceChatSession:
         Returns:
             None
         """
-        async for frame in stream:
-            self.currentImageFrame = frame.frame
+        path = self.dataProvider.tempFilePathProvider('jpg')
 
-    def start(self, botToken: str) -> None:
+    async def start(self, botToken: str, loop: asyncio.AbstractEventLoop) -> None:
         """
         Start the hoster of chat session.
 
         Returns:
             None
         """
-        async def startChat():
-            self.chatRoom = livekit.rtc.Room()
-            await self.chatRoom.connect(webFrontend.config.LIVEKIT_API_URL, botToken)
 
-            @self.chatRoom.on("track_subscribed")
-            def on_track_subscribed(track: livekit.rtc.Track):
-                if track.kind == livekit.rtc.TrackKind.KIND_AUDIO:
-                    stream = livekit.rtc.AudioStream(track)
-                    asyncio.ensure_future(self.VAD(stream))
-                elif track.kind == livekit.rtc.TrackKind.KIND_VIDEO:
-                    stream = livekit.rtc.AudioStream(track)
-                    asyncio.ensure_future(self.receiveVideoStream(stream))
+        print('preparing to start chat...')
 
-            @self.chatRoom.on("participant_connected")
-            def on_participant_connected(participant: livekit.rtc.RemoteParticipant):
-                print(f"participant connected: {
-                      participant.identity} {participant.sid}")
+        self.chatRoom = livekit.rtc.Room(loop)
 
-            # publish track
-            audioSource = livekit.rtc.AudioSource(
-                webFrontend.config.LIVEKIT_SAMPLE_RATE, 1)
-            self.broadcastAudioTrack = livekit.rtc.LocalAudioTrack.create_audio_track(
-                "stream_track", audioSource)
-            publication = await self.chatRoom.local_participant.publish_track(
-                self.broadcastAudioTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_MICROPHONE))
-            print(f"broadcast audio track published: {
-                  publication.track.track_id}")
+        @self.chatRoom.on("track_subscribed")
+        def on_track_subscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
+            print(f"track subscribed: {publication.sid}")
+            if track.kind == livekit.rtc.TrackKind.KIND_VIDEO:
+                print('running video stream...')
+                asyncio.ensure_future(self.receiveVideoStream(
+                    livekit.rtc.VideoStream(track)))
+            elif track.kind == livekit.rtc.TrackKind.KIND_AUDIO:
+                print('running voice activity detection...')
+                asyncio.ensure_future(
+                    self.VAD(livekit.rtc.AudioStream(track), publication.mime_type))
 
-            asyncio.ensure_future(self.broadcastAudioLoop(
-                source=audioSource, frequency=1000))
+        @self.chatRoom.on("track_unsubscribed")
+        def on_track_unsubscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
+            print(f"track unsubscribed: {publication.sid}")
 
-        asyncio.get_event_loop().run_until_complete(startChat())
+        @self.chatRoom.on("participant_connected")
+        def on_participant_connected(participant: livekit.rtc.RemoteParticipant):
+            print(f"participant connected: {
+                participant.identity} {participant.sid}")
+
+        @self.chatRoom.on("participant_disconnected")
+        def on_participant_disconnected(participant: livekit.rtc.RemoteParticipant):
+            print(
+                f"participant disconnected: {
+                    participant.sid} {participant.identity}"
+            )
+
+            async def f():
+                await self.chatRoom.disconnect()
+                loop.stop()
+
+            asyncio.ensure_future(f())
+
+        @self.chatRoom.on("connected")
+        def on_connected() -> None:
+            print("connected")
+
+        print('connecting to room...')
+        await self.chatRoom.connect(f"ws://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}", botToken)
+
+        # publish track
+        audioSource = livekit.rtc.AudioSource(
+            webFrontend.config.LIVEKIT_SAMPLE_RATE, 1)
+        self.broadcastAudioTrack = livekit.rtc.LocalAudioTrack.create_audio_track(
+            "stream_track", audioSource)
+        # we don't support audio/red format
+        publication = await self.chatRoom.local_participant.publish_track(
+            self.broadcastAudioTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_MICROPHONE, red=False))
+        print(f"broadcast audio track published: {
+            publication.track.name}")
+
+        asyncio.ensure_future(self.broadcastAudioLoop(
+            source=audioSource, frequency=1000))
 
     def generateEmptyAudioFrame(self) -> livekit.rtc.AudioFrame:
         """
@@ -213,40 +275,83 @@ class VoiceChatSession:
         Returns:
             livekit.rtc.AudioFrame: empty audio frame
         """
-        return livekit.rtc.AudioFrame(
-            num_channels=1,
-            data=b'\x00' * 160,
-            sample_rate=webFrontend.config.LIVEKIT_SAMPLE_RATE
-        )
+        amplitude = 32767  # for 16-bit audio
+        samples_per_channel = 480  # 10ms at 48kHz
+        time = numpy.arange(samples_per_channel) / \
+            webFrontend.config.LIVEKIT_SAMPLE_RATE
+        total_samples = 0
+        audio_frame = livekit.rtc.AudioFrame.create(
+            webFrontend.config.LIVEKIT_SAMPLE_RATE, 1, samples_per_channel)
+        audio_data = numpy.frombuffer(audio_frame.data, dtype=numpy.int16)
+        time = (total_samples + numpy.arange(samples_per_channel)) / \
+            webFrontend.config.LIVEKIT_SAMPLE_RATE
+        wave = numpy.int16(0)
+        numpy.copyto(audio_data, wave)
+        # print('done1')
+        return audio_frame
 
     def fetchBroadcastMission(self) -> None:
-        if len(self.broadcastMissions) == 0:
-            self.currentBroadcastMission = None
+        if self.broadcastMissions.empty():
+            # self.currentBroadcastMission = None
+            self.currentBroadcastMission = av.open(
+                "./temp/audio.wav", "r")
         else:
-            r = self.dataProvider.convertModelResponseToTTSInput(
-                [self.broadcastMissions.get()], self.ttsService['reference_audios'])[0]
-            refAudio = self.dataProvider.getReferenceAudioByName(
-                self.ttsServiceId, r['emotion'])
-            if refAudio is None:
-                raise exceptions.ReferenceAudioNotFound(
-                    f"Reference audio for emotion {r['emotion']} not found")
-            self.currentBroadcastMission = av.open(self.GPTSoVITsAPI.tts(
-                refAudio['path'], refAudio['text'], r['text'], refAudio['language']).raw)
+            # r = self.dataProvider.convertModelResponseToTTSInput(
+            #     [self.broadcastMissions.get()], self.ttsService['reference_audios'])[0]
+            # refAudio = self.dataProvider.getReferenceAudioByName(
+            #     self.ttsServiceId, r['emotion'])
+            # if refAudio is None:
+            #     raise exceptions.ReferenceAudioNotFound(
+            #         f"Reference audio for emotion {r['emotion']} not found")
+            # self.currentBroadcastMission = av.open(self.GPTSoVITsAPI.tts(
+            #     refAudio['path'], refAudio['text'], r['text'], refAudio['language']).raw)
+            pass
         return self.currentBroadcastMission
 
     async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int):
+        print('broadcasting audio...')
         while True:
             if self.fetchBroadcastMission() is None:
+                print('capturing empty audio frame...')
                 await source.capture_frame(self.generateEmptyAudioFrame())
+                # print('done2')
             else:
                 frame: Optional[av.AudioFrame] = None
-                async for frame in self.currentBroadcastMission.decode(audio=0):
-                    livekitFrame = livekit.rtc.AudioFrame(
-                        frame.to_ndarray().tobytes(),
-                        frame.sample_rate,
-                        num_channels=1, samples_per_channel=480).remix_and_resample(webFrontend.config.LIVEKIT_SAMPLE_RATE, 1)
-
+                start = time.time()
+                count = 0
+                for frame in self.currentBroadcastMission.decode(audio=0):
+                    print(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(
+                        frame.layout.channels), [i for i in frame.side_data.keys()])
+                    try:
+                        livekitFrame = livekit.rtc.AudioFrame(
+                            frame.to_ndarray().tobytes(),
+                            frame.sample_rate,
+                            num_channels=len(frame.layout.channels),
+                            samples_per_channel=frame.samples // len(frame.layout.channels)).remix_and_resample(webFrontend.config.LIVEKIT_SAMPLE_RATE, 1)
+                    except:
+                        # if there's problem with the frame, skip it and continue to the next one.
+                        print('Error processing frame, skipping it.')
+                        continue
+                    future_base = time.time()
+                    future = future_base + 1/(frame.sample_rate // 1000)
+                    if (future - start > 0) and (future - start < 1):
+                        count += 1
+                        print(f'processed {count} frames in {
+                              future - start} seconds.')
+                    else:
+                        # delay compensation
+                        if (frame.sample_rate // 1000) - count > 5:
+                            print('Too agressive! using 5 frames to compensate')
+                            future -= 1 / 1000
+                        elif (frame.sample_rate // 1000) - count < -5:
+                            print('Too negatively agressive! using 5 frames to compensate')
+                            future += 1 / 1000
+                        else:
+                            print('Normal compensation')
+                            future -= ((frame.sample_rate // 1000) - count) / 1000
+                    # while time.time() < future:
                     await source.capture_frame(livekitFrame)
+                        # await asyncio.sleep(0.0001)
 
     def chatPluginGetUserMedia(self) -> glm.File:
         """
@@ -262,7 +367,7 @@ class VoiceChatSession:
                 f"No image frame found for {self.charName}")
 
         img = self.currentImageFrame.convert(
-            livekit.rtc.VideoBufferType.RGBA).data.tobytes()
+            livekit.rtc.VideoBufferType.BGRA).data.tobytes()
         img_np = numpy.frombuffer(img, dtype=numpy.uint8).reshape(
             self.currentImageFrame.height,
             self.currentImageFrame.width,
@@ -282,8 +387,8 @@ class VoiceChatSession:
         Terminate the chat session.
         """
         async def f():
-            await self.chatRoom.disconnect()
             self.bot.terminateChat()
+            await self.chatRoom.disconnect()
 
         asyncio.get_event_loop().run_until_complete(f())
 
@@ -364,7 +469,7 @@ class chatbotManager:
         for i in self.rtPool.keys():
             if self.rtPool[i]['charName'] == charName:
                 raise exceptions.SessionHasAlreadyExist(
-                    f"Session {i} already exists")
+                    f"Session for {charName} already exists")
 
         # create a new real time session
         self.rtPool[sessionName] = {

@@ -25,3 +25,7 @@ class NoUserMediaFound(RuntimeError):
 class ReferenceAudioNotFound(RuntimeError):
     def __init__(self, s) -> None:
         super().__init__(s)
+        
+class UnsupportedMimeType(RuntimeError):
+    def __init__(self, s) -> None:
+        super().__init__(s)

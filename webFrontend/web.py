@@ -1,9 +1,13 @@
 import asyncio
+import threading
 import uuid
+
+import eventlet.wsgi
 import flask
 from flask_cors import CORS, cross_origin
 import time
 
+import eventlet
 import livekit.api.room_service
 
 import webFrontend.chatbotManager as chatbotManager
@@ -22,7 +26,13 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
 dProvider = dataProvider.DataProvider(f'{config.BLOB_URL}/data.db')
 chatbotManager = chatbotManager.chatbotManager(dProvider)
-livekitApi = livekit.api.LiveKitAPI(webFrontend.config.LIVEKIT_API_URL, webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET)
+asyncEventLoop = asyncio.new_event_loop()
+asyncio.set_event_loop(asyncEventLoop)
+
+
+async def getLiveKitAPI():
+    return livekit.api.LiveKitAPI(f"http://{webFrontend.config.LIVEKIT_API_URL}", webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET)
+
 
 def parseRequestRange(s, flen):
     s = s[s.find('=')+1:]
@@ -801,7 +811,6 @@ def updatePassword():
     return {'data': 'success', 'status': True}
 
 
-
 @app.route("/api/v1/initialize", methods=["POST"])
 def initialize():
     if dProvider.checkIfInitialized():
@@ -834,29 +843,46 @@ def establishRealTimeVoiceChat():
         charName = data['charName']
     except:
         return {'data': 'invalid form', 'status': False}
-    
+
+    if chatbotManager.checkIfRtSessionExist(charName):
+        return {'data': f'Session for {charName} already exists', 'status': False}
+
     sessionName = uuid.uuid4().hex
-    session = webFrontend.chatbotManager.VoiceChatSession(sessionName, charName, dProvider)
+
+    session = webFrontend.chatbotManager.VoiceChatSession(
+        sessionName, charName, dProvider)
     userName = dProvider.getUserName()
-    
+
     userToken = livekit.api.AccessToken(
-            webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
-                'user').with_name(userName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
-            
+        webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
+        'user').with_name(userName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
+
     botToken = livekit.api.AccessToken(
-            webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
-                'model').with_name(charName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
+        webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
+        'model').with_name(charName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
+
+    # livekit api is in this file, so we can't put this logic into createRtSession
+    async def f():
+        await (await getLiveKitAPI()).room.create_room(create=livekit.api.CreateRoomRequest(name=sessionName, empty_timeout=10*60, max_participants=2))
+
+    asyncEventLoop.run_until_complete(f())
     
-    async def r():
-        # livekit api is in this file, so we can't put this logic into createRtSession
-        await livekitApi.room.create_room(livekit.api.CreateRoomRequest(sessionName, 10*60, max_participants=2))
-        session.start(botToken)
-        
-    asyncio.get_event_loop().run_until_complete(r())
+    def th():
+        newloop = asyncio.new_event_loop()
+        asyncio.set_event_loop(newloop)
+        asyncio.ensure_future(session.start(botToken, loop=newloop))
+        try:
+            newloop.run_forever()
+        finally:
+            print('I died')
+            newloop.close()
+    
+    t = threading.Thread(target=th)
+    t.start()
     
     chatbotManager.createRtSession(charName, sessionName, session)
-    
-    return {'data': {'session': sessionName, 'token': userToken, 'url': webFrontend.config.LIVEKIT_API_EXTERNAL_URL},'status': True}
+
+    return {'data': {'session': sessionName, 'token': userToken, 'url': webFrontend.config.LIVEKIT_API_EXTERNAL_URL}, 'status': True}
 
 
 @app.route("/api/v1/rtvc/terminate", methods=["POST"])
@@ -871,15 +897,17 @@ def terminateRealTimeVoiceChat():
         sessionName = data['session']
     except:
         return {'data': 'invalid form', 'status': False}
-    
+
     try:
         chatbotManager.terminateRtSession(sessionName)
     except:
         return {'data': 'invalid session', 'status': False}
-    
+
     return {'data': 'success', 'status': True}
 
 
 def invoke():
-    app.run(webFrontend.config.APP_HOST,
-            webFrontend.config.APP_PORT, debug=False)
+    # eventlet.wsgi.server(eventlet.listen((webFrontend.config.APP_HOST,
+    #         webFrontend.config.APP_PORT)), app)
+    app.run(host=webFrontend.config.APP_HOST,
+            port=webFrontend.config.APP_PORT, debug=False)

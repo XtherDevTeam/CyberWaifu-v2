@@ -16,3 +16,5 @@ numpy
 livekit-api
 livekit
 webrtcvad
+asgiref
+nest_asyncio
