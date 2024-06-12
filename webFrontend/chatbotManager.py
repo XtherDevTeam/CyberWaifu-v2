@@ -1,3 +1,4 @@
+from ast import parse
 import asyncio
 import contextlib
 import io
@@ -88,6 +89,29 @@ class VoiceChatSession:
         self.message_queue: list[glm.File] = []
         print('initialized voice chat session')
 
+    async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer' | 'av.OutputContainer':
+        """
+        Invoke GPT-SoVITs TTS service to generate audio file for the parsed response.
+
+        Args:
+            parsedResponse (dict[str, str | int | bool]): parsed response from the chatbot
+
+        Raises:
+            exceptions.ReferenceAudioNotFound: Reference audio for emotion not found.
+
+        Returns:
+            'av.InputContainer' | 'av.OutputContainer': audio file for the parsed response.
+        """
+        r = self.dataProvider.convertModelResponseToTTSInput(
+            [parsedResponse], self.ttsService['reference_audios'])[0]
+        refAudio = self.dataProvider.getReferenceAudioByName(
+            self.ttsServiceId, r['emotion'])
+        if refAudio is None:
+            raise exceptions.ReferenceAudioNotFound(
+                f"Reference audio for emotion {r['emotion']} not found")
+        return av.open(self.GPTSoVITsAPI.tts(
+            refAudio['path'], refAudio['text'], r['text'], refAudio['language']).raw)
+
     async def chat(self, audios: list[glm.File]) -> None:
         """
         Send audio files to chatbot and retrive response as broadcast missions.
@@ -101,10 +125,11 @@ class VoiceChatSession:
 
         self.message_queue.extend(audios)
         if self.chat_lock.locked():
+            print('wait for next round of sending')
             pass
         else:
             resp = []
-            # no to use self.bot.chat here cuz we've already uploaded the files.
+            # not to use self.bot.chat here cuz we've already uploaded the files.
             if self.bot.inChatting:
                 resp = self.bot.llm.chat(self.message_queue)
             else:
@@ -139,6 +164,10 @@ class VoiceChatSession:
             raise exceptions.UnsupportedMimeType(
                 f"Unsupported audio mime type: {mimeType}")
         async for frame in stream:
+            for i in frame.frame.data:
+                # reduce the loudness of the audio signal
+                i = i * 0.7
+            
             byteFrame = frame.frame.data.tobytes()
             isSpeech = self.vadModel.is_speech(
                 byteFrame, frame.frame.sample_rate)
@@ -292,20 +321,11 @@ class VoiceChatSession:
 
     def fetchBroadcastMission(self) -> None:
         if self.broadcastMissions.empty():
-            # self.currentBroadcastMission = None
-            self.currentBroadcastMission = av.open(
-                "./temp/audio.wav", "r")
+            self.currentBroadcastMission = None
+            # self.currentBroadcastMission = av.open(
+            # "./temp/2.wav", "r")
         else:
-            # r = self.dataProvider.convertModelResponseToTTSInput(
-            #     [self.broadcastMissions.get()], self.ttsService['reference_audios'])[0]
-            # refAudio = self.dataProvider.getReferenceAudioByName(
-            #     self.ttsServiceId, r['emotion'])
-            # if refAudio is None:
-            #     raise exceptions.ReferenceAudioNotFound(
-            #         f"Reference audio for emotion {r['emotion']} not found")
-            # self.currentBroadcastMission = av.open(self.GPTSoVITsAPI.tts(
-            #     refAudio['path'], refAudio['text'], r['text'], refAudio['language']).raw)
-            pass
+            self.currentBroadcastMission = self.broadcastMissions.get()
         return self.currentBroadcastMission
 
     async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int):
@@ -320,38 +340,29 @@ class VoiceChatSession:
                 start = time.time()
                 count = 0
                 for frame in self.currentBroadcastMission.decode(audio=0):
-                    print(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(
-                        frame.layout.channels), [i for i in frame.side_data.keys()])
+                    # print(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
+                    # frame.layout.channels), [i for i in frame.side_data.keys()])
                     try:
+                        # sizeof(int16) =
+                        # print out attrs of livekitFrame when initializing it.
+                        # print(frame.samples * 2, len(frame.to_ndarray().astype(numpy.int16).tobytes()))
+                        resampledFrame = av.AudioResampler(
+                            format='s16', layout='mono', rate=webFrontend.config.LIVEKIT_SAMPLE_RATE).resample(frame)[0]
+                        # print(resampledFrame.samples * 2, len(resampledFrame.to_ndarray().astype(numpy.int16).tobytes()))
                         livekitFrame = livekit.rtc.AudioFrame(
-                            frame.to_ndarray().tobytes(),
-                            frame.sample_rate,
-                            num_channels=len(frame.layout.channels),
-                            samples_per_channel=frame.samples // len(frame.layout.channels)).remix_and_resample(webFrontend.config.LIVEKIT_SAMPLE_RATE, 1)
-                    except:
+                            data=resampledFrame.to_ndarray().astype(numpy.int16).tobytes(),
+                            sample_rate=resampledFrame.sample_rate,
+                            num_channels=len(resampledFrame.layout.channels),
+                            samples_per_channel=resampledFrame.samples // len(resampledFrame.layout.channels),)
+                        # print(livekitFrame.sample_rate, livekitFrame.num_channels, livekitFrame.samples_per_channel, len(livekitFrame.data))
+                    except Exception as e:
+                        raise e
                         # if there's problem with the frame, skip it and continue to the next one.
                         print('Error processing frame, skipping it.')
                         continue
-                    future_base = time.time()
-                    future = future_base + 1/(frame.sample_rate // 1000)
-                    if (future - start > 0) and (future - start < 1):
-                        count += 1
-                        print(f'processed {count} frames in {
-                              future - start} seconds.')
-                    else:
-                        # delay compensation
-                        if (frame.sample_rate // 1000) - count > 5:
-                            print('Too agressive! using 5 frames to compensate')
-                            future -= 1 / 1000
-                        elif (frame.sample_rate // 1000) - count < -5:
-                            print('Too negatively agressive! using 5 frames to compensate')
-                            future += 1 / 1000
-                        else:
-                            print('Normal compensation')
-                            future -= ((frame.sample_rate // 1000) - count) / 1000
                     # while time.time() < future:
                     await source.capture_frame(livekitFrame)
-                        # await asyncio.sleep(0.0001)
+                    # await asyncio.sleep(0.0001)
 
     def chatPluginGetUserMedia(self) -> glm.File:
         """
