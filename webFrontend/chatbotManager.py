@@ -89,7 +89,7 @@ class VoiceChatSession:
         self.message_queue: list[glm.File] = []
         print('initialized voice chat session')
 
-    async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer' | 'av.OutputContainer':
+    async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer':
         """
         Invoke GPT-SoVITs TTS service to generate audio file for the parsed response.
 
