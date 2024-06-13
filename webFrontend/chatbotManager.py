@@ -23,6 +23,7 @@ from pyparsing import Opt
 import requests
 from sympy import rem
 from GPTSoVits import GPTSoVitsAPI
+# from asyncore import loop
 import dataProvider
 import memory
 import uuid
@@ -87,6 +88,8 @@ class VoiceChatSession:
         self.vadModel = webrtcvad.Vad(3)
         self.chat_lock = threading.Lock()
         self.message_queue: list[glm.File] = []
+        self.terminateSessionCallback = None
+        self.loop : asyncio.AbstractEventLoop = None
         print('initialized voice chat session')
 
     async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer':
@@ -239,7 +242,7 @@ class VoiceChatSession:
         """
 
         print('preparing to start chat...')
-
+        self.loop = loop
         self.chatRoom = livekit.rtc.Room(loop)
 
         @self.chatRoom.on("track_subscribed")
@@ -270,11 +273,13 @@ class VoiceChatSession:
                     participant.sid} {participant.identity}"
             )
 
-            async def f():
-                await self.chatRoom.disconnect()
-                loop.stop()
+            # async def f():
+                # await self.chatRoom.disconnect()
+            self.terminateSession()
+                # loop.stop()
+                # loop.stop()
 
-            asyncio.ensure_future(f())
+            # asyncio.ensure_future(f())
 
         @self.chatRoom.on("connected")
         def on_connected() -> None:
@@ -321,11 +326,12 @@ class VoiceChatSession:
 
     def fetchBroadcastMission(self) -> None:
         if self.broadcastMissions.empty():
-            self.currentBroadcastMission = None
-            # self.currentBroadcastMission = av.open(
-            # "./temp/2.wav", "r")
+            # self.currentBroadcastMission = None
+            self.currentBroadcastMission = av.open(
+            "./temp/wdnmd.wav", "r")
         else:
-            self.currentBroadcastMission = self.broadcastMissions.get()
+            # self.currentBroadcastMission = self.broadcastMissions.get()
+            pass
         return self.currentBroadcastMission
 
     async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int):
@@ -396,12 +402,21 @@ class VoiceChatSession:
     def terminateSession(self) -> None:
         """
         Terminate the chat session.
+        
+        FIXME: it will only be triggered when other events received first. strange
         """
+        # self.bot.terminateChat()
+        self.terminateSessionCallback()
         async def f():
+            print('terminating chat session...')
             self.bot.terminateChat()
+            # self.terminateSessionCallback()
             await self.chatRoom.disconnect()
-
-        asyncio.get_event_loop().run_until_complete(f())
+            
+        print(asyncio.get_event_loop(), self.loop)
+        # self.loop.stop()
+        asyncio.ensure_future(f())
+        
 
 
 class chatbotManager:
@@ -482,6 +497,11 @@ class chatbotManager:
                 raise exceptions.SessionHasAlreadyExist(
                     f"Session for {charName} already exists")
 
+        def terminateCallback():
+            print(f'Terminating real time session {sessionName}')
+            self.terminateRtSession(sessionName)
+            
+        voiceSession.terminateSessionCallback = terminateCallback
         # create a new real time session
         self.rtPool[sessionName] = {
             'charName': charName,
@@ -532,7 +552,7 @@ class chatbotManager:
             exceptions.SessionNotFound: if the session is not found or expired
         """
         if sessionName in self.rtPool:
-            self.getRtSession(sessionName).terminateSession()
+            # self.getRtSession(sessionName).terminateSession()
             del self.rtPool[sessionName]
         else:
             raise exceptions.SessionNotFound(
