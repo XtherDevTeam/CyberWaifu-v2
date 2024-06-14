@@ -17,11 +17,12 @@ import cv2
 import livekit.api
 import livekit.rtc
 from mirai import Voice
-from numpy import char
+from numpy import byte, char
 import numpy
 from pyparsing import Opt
 import requests
-from sympy import rem
+import noisereduce
+# import sympy
 from GPTSoVits import GPTSoVitsAPI
 # from asyncore import loop
 import dataProvider
@@ -89,7 +90,7 @@ class VoiceChatSession:
         self.chat_lock = threading.Lock()
         self.message_queue: list[glm.File] = []
         self.terminateSessionCallback = None
-        self.loop : asyncio.AbstractEventLoop = None
+        self.loop: asyncio.AbstractEventLoop = None
         print('initialized voice chat session')
 
     async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer':
@@ -166,12 +167,51 @@ class VoiceChatSession:
         if ext is None:
             raise exceptions.UnsupportedMimeType(
                 f"Unsupported audio mime type: {mimeType}")
+            
+        last_sec = time.time()
+        last_sec_frames = 0
         async for frame in stream:
+
+            # avFrame = av.AudioFrame(format='s16', layout='mono', samples=frame.frame.samples)
+            last_sec_frames += 1
+            if time.time() - last_sec > 1:
+                last_sec = time.time()
+                print(f"last second: {last_sec_frames} frames")
+                last_sec_frames = 0
+                print('processing frame')
+
+            """
             for i in frame.frame.data:
                 # reduce the loudness of the audio signal
-                i = i * 0.7
+                # print(i)
+                i = i * 0.8
+            """
+
+            """
+            audio_data = numpy.frombuffer(frame.frame.data.tobytes(), dtype=numpy.int16)
+            nyquist_freq = frame.frame.sample_rate / 2
+
+            # Create bandpass filter for voice range (80Hz - 3kHz)
+            low_normalized_cutoff = 80 / nyquist_freq
+            high_normalized_cutoff = 3000 / nyquist_freq
+            b, a = scipy.signal.butter(4, [low_normalized_cutoff, high_normalized_cutoff], btype='band')  
+
+            filtered_data = scipy.signal.filtfilt(b, a, audio_data)
             
-            byteFrame = frame.frame.data.tobytes()
+            normalized_cutoff = 1000 / nyquist_freq
+            b, a = scipy.signal.butter(4, normalized_cutoff, btype='low', analog=False)
+            # filtered_data = lfilter(b, a, filtered_data)
+            """
+
+            # this motherfking method reduced at least 40% performance, when using torch, it's even poorer
+            filtered_data = noisereduce.reduce_noise(y=frame.frame.data, sr=frame.frame.sample_rate, n_std_thresh_stationary=1.0, stationary=True, use_torch=False, device='cpu')
+            # filtered_data = frame.frame.data
+            # print(len(frame.frame.data.tobytes()), len(
+                # audio_data.tobytes()), len(filtered_data.tobytes()))
+                
+            byteFrame = filtered_data.astype(numpy.int16).tobytes()
+            # print('processing frame')
+
             isSpeech = self.vadModel.is_speech(
                 byteFrame, frame.frame.sample_rate)
             if not triggered:
@@ -205,15 +245,16 @@ class VoiceChatSession:
                         write_wave(temp, b)
 
                         print(f"uploading {temp}")
-                        glmFile = google.generativeai.upload_file(temp)
-                        os.remove(temp)
-                        return glmFile
+                        # glmFile = google.generativeai.upload_file(temp)
+                        # os.remove(temp)
+                        # return glmFile
                         # return 1
+                        return temp
 
                     async def proc_wrapper(proc_bs: list[bytes]):
                         files = [proc(b) for b in proc_bs]
                         print(f'uploaded audios: {files}')
-                        await self.chat(files)
+                        # await self.chat(files)
 
                     asyncio.ensure_future(proc_wrapper(bs))
 
@@ -274,10 +315,10 @@ class VoiceChatSession:
             )
 
             # async def f():
-                # await self.chatRoom.disconnect()
+            # await self.chatRoom.disconnect()
             self.terminateSession()
-                # loop.stop()
-                # loop.stop()
+            # loop.stop()
+            # loop.stop()
 
             # asyncio.ensure_future(f())
 
@@ -328,7 +369,7 @@ class VoiceChatSession:
         if self.broadcastMissions.empty():
             # self.currentBroadcastMission = None
             self.currentBroadcastMission = av.open(
-            "./temp/wdnmd.wav", "r")
+                "./temp/wdnmd.wav", "r")
         else:
             # self.currentBroadcastMission = self.broadcastMissions.get()
             pass
@@ -402,21 +443,21 @@ class VoiceChatSession:
     def terminateSession(self) -> None:
         """
         Terminate the chat session.
-        
+
         FIXME: it will only be triggered when other events received first. strange
         """
         # self.bot.terminateChat()
         self.terminateSessionCallback()
+
         async def f():
             print('terminating chat session...')
             self.bot.terminateChat()
             # self.terminateSessionCallback()
             await self.chatRoom.disconnect()
-            
+
         print(asyncio.get_event_loop(), self.loop)
         # self.loop.stop()
         asyncio.ensure_future(f())
-        
 
 
 class chatbotManager:
@@ -500,7 +541,7 @@ class chatbotManager:
         def terminateCallback():
             print(f'Terminating real time session {sessionName}')
             self.terminateRtSession(sessionName)
-            
+
         voiceSession.terminateSessionCallback = terminateCallback
         # create a new real time session
         self.rtPool[sessionName] = {
