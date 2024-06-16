@@ -14,9 +14,11 @@ import wave
 import av
 from cv2 import broadcast
 import cv2
+from librosa import resample
 import livekit.api
 import livekit.rtc
 from mirai import Voice
+from more_itertools import last
 from numpy import byte, char
 import numpy
 from pyparsing import Opt
@@ -24,7 +26,7 @@ import requests
 import noisereduce
 # import sympy
 from GPTSoVits import GPTSoVitsAPI
-# from asyncore import loop
+import SileroVAD
 import dataProvider
 import memory
 import uuid
@@ -132,6 +134,11 @@ class VoiceChatSession:
             print('wait for next round of sending')
             pass
         else:
+            curLen = len(self.message_queue)
+            await asyncio.sleep(0.5)
+            if len(self.message_queue) != curLen:
+                # new message arrived, skip this round
+                return
             resp = []
             # not to use self.bot.chat here cuz we've already uploaded the files.
             if self.bot.inChatting:
@@ -143,6 +150,25 @@ class VoiceChatSession:
             for i in self.dataProvider.parseModelResponse(resp):
                 self.broadcastMissions.put(i)
             self.message_queue = []
+
+    def signal_filter(self, y: numpy.ndarray, window_size=20) -> numpy.ndarray:
+        """
+        Filter the audio signal using a moving average filter.
+
+        Args:
+            y (numpy.ndarray): audio signal
+            window_size (int, optional): window size for moving average filter. Defaults to 20.
+
+        Returns:
+            numpy.ndarray: filtered audio signal
+        """
+        # print(y)
+        filtered_signal = numpy.zeros_like(y)
+        for i in range(len(y)):
+            start = max(0, i - window_size // 2)
+            end = min(len(y), i + window_size // 2)
+            filtered_signal[i] = numpy.mean(y[start:end])
+        return filtered_signal
 
     async def VAD(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
@@ -167,53 +193,50 @@ class VoiceChatSession:
         if ext is None:
             raise exceptions.UnsupportedMimeType(
                 f"Unsupported audio mime type: {mimeType}")
-            
+        
+        frames = 0
         last_sec = time.time()
         last_sec_frames = 0
+        last_frame : Optional[livekit.rtc.AudioFrame] = None
         async for frame in stream:
-
-            # avFrame = av.AudioFrame(format='s16', layout='mono', samples=frame.frame.samples)
             last_sec_frames += 1
+            frames += 1
+        
+            
             if time.time() - last_sec > 1:
                 last_sec = time.time()
                 print(f"last second: {last_sec_frames} frames")
                 last_sec_frames = 0
-                print('processing frame')
-
-            """
-            for i in frame.frame.data:
-                # reduce the loudness of the audio signal
-                # print(i)
-                i = i * 0.8
-            """
-
-            """
-            audio_data = numpy.frombuffer(frame.frame.data.tobytes(), dtype=numpy.int16)
-            nyquist_freq = frame.frame.sample_rate / 2
-
-            # Create bandpass filter for voice range (80Hz - 3kHz)
-            low_normalized_cutoff = 80 / nyquist_freq
-            high_normalized_cutoff = 3000 / nyquist_freq
-            b, a = scipy.signal.butter(4, [low_normalized_cutoff, high_normalized_cutoff], btype='band')  
-
-            filtered_data = scipy.signal.filtfilt(b, a, audio_data)
-            
-            normalized_cutoff = 1000 / nyquist_freq
-            b, a = scipy.signal.butter(4, normalized_cutoff, btype='low', analog=False)
-            # filtered_data = lfilter(b, a, filtered_data)
-            """
+                # print('processing frame')
 
             # this motherfking method reduced at least 40% performance, when using torch, it's even poorer
-            filtered_data = noisereduce.reduce_noise(y=frame.frame.data, sr=frame.frame.sample_rate, n_std_thresh_stationary=1.0, stationary=True, use_torch=False, device='cpu')
+            # filtered_data = noisereduce.reduce_noise(y=frame.frame.data, sr=frame.frame.sample_rate, n_std_thresh_stationary=1.0, stationary=True, use_torch=False, device='cpu')
             # filtered_data = frame.frame.data
             # print(len(frame.frame.data.tobytes()), len(
                 # audio_data.tobytes()), len(filtered_data.tobytes()))
                 
+            if frames % 2 == 0:
+                # print('0.02ms refresh')
+                pass
+            else:
+                last_frame = frame.frame
+                # print('refreshing buffer', last_frame)
+                continue
+                
+            rb = last_frame.data.tobytes()
+            rb += frame.frame.data.tobytes()
+                
+            numpy_data = numpy.frombuffer(rb, dtype=numpy.int16)
+            
+            filtered_data = self.signal_filter(y=numpy_data)
+                
             byteFrame = filtered_data.astype(numpy.int16).tobytes()
-            # print('processing frame')
+            # print('processing frame')s
 
-            isSpeech = self.vadModel.is_speech(
-                byteFrame, frame.frame.sample_rate)
+            isSpeech = SileroVAD.SileroVAD.predict(numpy.frombuffer(byteFrame, dtype=numpy.int16), 8000)
+            # print(f"is speech: {isSpeech}")
+            isSpeech = isSpeech > 0.5
+            
             if not triggered:
                 ring_buffer.append((byteFrame, isSpeech))
                 num_voiced = len([f for f, speech in ring_buffer if speech])
@@ -452,6 +475,7 @@ class VoiceChatSession:
         async def f():
             print('terminating chat session...')
             self.bot.terminateChat()
+            SileroVAD.SileroVAD.reset()
             # self.terminateSessionCallback()
             await self.chatRoom.disconnect()
 

@@ -19,3 +19,5 @@ webrtcvad
 asgiref
 nest_asyncio
 noisereduce
+torchaudio
+onnxruntime
