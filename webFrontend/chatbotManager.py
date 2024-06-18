@@ -75,7 +75,7 @@ class VoiceChatSession:
         self.sessionName = sessionName
         self.charName = charName
         self.bot = instance.Chatbot(memory.Memory(
-            dataProvider, charName, True), dataProvider.getUserName(), [self.chatPluginGetUserMedia])
+            dataProvider, charName, True), dataProvider.getUserName())
         self.chatRoom: Optional[livekit.rtc.Room] = None
         self.dataProvider = dataProvider
         self.currentImageFrame: Optional[livekit.rtc.VideoFrame] = None
@@ -93,7 +93,19 @@ class VoiceChatSession:
         self.message_queue: list[glm.File] = []
         self.terminateSessionCallback = None
         self.loop: asyncio.AbstractEventLoop = None
+        self.broadcastingThread: threading.Thread = None
         print('initialized voice chat session')
+
+    def runBroadcastingLoop(self, audioSource) -> None:
+        """
+        Start the loop for broadcasting missions.
+
+        Returns:
+            None
+        """
+        print('starting broadcasting loop')
+        new_loop = asyncio.new_event_loop()
+        new_loop.run_until_complete(self.broadcastAudioLoop(audioSource))
 
     async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer':
         """
@@ -115,8 +127,8 @@ class VoiceChatSession:
         if refAudio is None:
             raise exceptions.ReferenceAudioNotFound(
                 f"Reference audio for emotion {r['emotion']} not found")
-        return av.open(self.GPTSoVITsAPI.tts(
-            refAudio['path'], refAudio['text'], r['text'], refAudio['language']).raw)
+        self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.tts(
+            refAudio['path'], refAudio['text'], r['text'], refAudio['language']).raw))
 
     async def chat(self, audios: list[glm.File]) -> None:
         """
@@ -146,9 +158,12 @@ class VoiceChatSession:
             else:
                 resp = self.bot.llm.initiate(self.message_queue)
                 self.bot.inChatting = True
-            print('raw response:', resp)
+            
+            if resp == 'OPT_GetUserMedia':
+                resp = self.bot.llm.chat([self.chatPluginGetUserMedia()])
             for i in self.dataProvider.parseModelResponse(resp):
-                self.broadcastMissions.put(i)
+                self.ttsInvocation(i)
+                
             self.message_queue = []
 
     def signal_filter(self, y: numpy.ndarray, window_size=20) -> numpy.ndarray:
@@ -186,7 +201,7 @@ class VoiceChatSession:
         voiced_frames: list[bytes] = []
         bs = []
         # i don't even know whether it's a good idea to use 648 as the maxlen.
-        maxlen = 60
+        maxlen = 30
         triggered = False
         ext = mimetypes.guess_extension(mimeType)
         print('using audio extension:', ext)
@@ -197,7 +212,7 @@ class VoiceChatSession:
         frames = 0
         last_sec = time.time()
         last_sec_frames = 0
-        last_frame : Optional[livekit.rtc.AudioFrame] = None
+        last_frame : list[livekit.rtc.AudioFrame] = []
         async for frame in stream:
             last_sec_frames += 1
             frames += 1
@@ -215,27 +230,33 @@ class VoiceChatSession:
             # print(len(frame.frame.data.tobytes()), len(
                 # audio_data.tobytes()), len(filtered_data.tobytes()))
                 
-            if frames % 2 == 0:
-                # print('0.02ms refresh')
+            if frames % 4 == 0:
+                # print('40ms refresh')
                 pass
             else:
-                last_frame = frame.frame
+                # last_frame = frame.frame
+                last_frame.append(frame.frame)
                 # print('refreshing buffer', last_frame)
                 continue
                 
-            rb = last_frame.data.tobytes()
+            rb = b''
+            for i in last_frame:
+                rb += i.data.tobytes()
             rb += frame.frame.data.tobytes()
+            last_frame = []
                 
             numpy_data = numpy.frombuffer(rb, dtype=numpy.int16)
             
-            filtered_data = self.signal_filter(y=numpy_data)
+            # filtered_data = self.signal_filter(y=numpy_data)
                 
-            byteFrame = filtered_data.astype(numpy.int16).tobytes()
-            # print('processing frame')s
+            byteFrame = numpy_data.astype(numpy.int16).tobytes()
+            # wholeFrame = livekit.rtc.AudioFrame(
+                # data=byteFrame, sample_rate=frame.frame.sample_rate, samples_per_channel=frame.frame.samples_per_channel, num_channels=frame.frame.num_channels)
+            # print(f"frame len: {len(wholeFrame.data)}")
 
-            isSpeech = SileroVAD.SileroVAD.predict(numpy.frombuffer(byteFrame, dtype=numpy.int16), 8000)
+            isSpeech = SileroVAD.SileroVAD.predict(numpy_data, frame.frame.sample_rate)
             # print(f"is speech: {isSpeech}")
-            isSpeech = isSpeech > 0.5
+            isSpeech = isSpeech > 0.7
             
             if not triggered:
                 ring_buffer.append((byteFrame, isSpeech))
@@ -269,10 +290,11 @@ class VoiceChatSession:
 
                         print(f"uploading {temp}")
                         # glmFile = google.generativeai.upload_file(temp)
-                        # os.remove(temp)
+                        # self.broadcastMissions.put(av.open(temp))
+                        os.remove(temp)
                         # return glmFile
-                        # return 1
-                        return temp
+                        return 1
+                        # return temp
 
                     async def proc_wrapper(proc_bs: list[bytes]):
                         files = [proc(b) for b in proc_bs]
@@ -363,8 +385,11 @@ class VoiceChatSession:
         print(f"broadcast audio track published: {
             publication.track.name}")
 
-        asyncio.ensure_future(self.broadcastAudioLoop(
-            source=audioSource, frequency=1000))
+        self.broadcastingThread = threading.Thread(
+            target=self.runBroadcastingLoop, args=(audioSource,))
+        self.broadcastingThread.start()
+
+        print('chat session started')
 
     def generateEmptyAudioFrame(self) -> livekit.rtc.AudioFrame:
         """
@@ -390,22 +415,24 @@ class VoiceChatSession:
 
     def fetchBroadcastMission(self) -> None:
         if self.broadcastMissions.empty():
-            # self.currentBroadcastMission = None
-            self.currentBroadcastMission = av.open(
-                "./temp/wdnmd.wav", "r")
+            self.currentBroadcastMission = None
+            # self.currentBroadcastMission = av.open(
+                # "./temp/wdnmd.wav", "r")
         else:
-            # self.currentBroadcastMission = self.broadcastMissions.get()
-            pass
+            self.currentBroadcastMission = self.broadcastMissions.get()
+            # pass
         return self.currentBroadcastMission
 
-    async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int):
+    async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int = 1000):
         print('broadcasting audio...')
         while True:
+            # print(self.broadcastMissions.qsize(), 'missions in queue')
             if self.fetchBroadcastMission() is None:
-                print('capturing empty audio frame...')
+                # print('capturing empty audio frame...')
                 await source.capture_frame(self.generateEmptyAudioFrame())
                 # print('done2')
             else:
+                print('broadcasting mission...')
                 frame: Optional[av.AudioFrame] = None
                 start = time.time()
                 count = 0
@@ -436,8 +463,7 @@ class VoiceChatSession:
 
     def chatPluginGetUserMedia(self) -> glm.File:
         """
-        Get image of user's camera or sharing screen. Use it when user want you to know about the content of his camera or screen or 
-        your response is related to the content of the camera or screen.
+        Get image of user's camera or sharing screen.
 
         Returns:
             glm.File: Image file of user's camera or sharing screen.
@@ -475,6 +501,8 @@ class VoiceChatSession:
         async def f():
             print('terminating chat session...')
             self.bot.terminateChat()
+            # raise an exception to stop the loop
+            self.broadcastMissions = None
             SileroVAD.SileroVAD.reset()
             # self.terminateSessionCallback()
             await self.chatRoom.disconnect()

@@ -6,7 +6,7 @@ def int2float(sound):
     sound = sound.astype('float32')
     if abs_max > 0:
         sound *= 1/32768
-    sound = sound.squeeze()  # depends on the use case
+    # sound = sound.squeeze()  # depends on the use case
     return sound
 
 class _SileroVAD:
@@ -23,9 +23,13 @@ class _SileroVAD:
         Returns:
             bool: True if voice activity is detected, False otherwise
         """
-        frame = int2float(frame)
-        frame = torch.from_numpy(frame)
         # print('frame len', len(frame))
+        frame = int2float(frame)
+        # print('frame len', len(frame))
+        frame = torch.from_numpy(frame)
+        # frame.unsqueeze(0)
+        
+        # frame = frame.unsqueeze(0)
         return self.model(frame, sample_rate).item()
         
     def reset(self):
