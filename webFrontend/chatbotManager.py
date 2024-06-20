@@ -107,7 +107,7 @@ class VoiceChatSession:
         new_loop = asyncio.new_event_loop()
         new_loop.run_until_complete(self.broadcastAudioLoop(audioSource))
 
-    async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer':
+    def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer':
         """
         Invoke GPT-SoVITs TTS service to generate audio file for the parsed response.
 
@@ -201,7 +201,7 @@ class VoiceChatSession:
         voiced_frames: list[bytes] = []
         bs = []
         # i don't even know whether it's a good idea to use 648 as the maxlen.
-        maxlen = 30
+        maxlen = 60
         triggered = False
         ext = mimetypes.guess_extension(mimeType)
         print('using audio extension:', ext)
@@ -261,7 +261,7 @@ class VoiceChatSession:
             if not triggered:
                 ring_buffer.append((byteFrame, isSpeech))
                 num_voiced = len([f for f, speech in ring_buffer if speech])
-                if num_voiced > 0.9 * maxlen:
+                if num_voiced > 0.8 * maxlen:
                     triggered = True
                     voiced_frames.extend(
                         [f for f, speech in ring_buffer if speech])
@@ -271,7 +271,7 @@ class VoiceChatSession:
                 ring_buffer.append((byteFrame, isSpeech))
                 num_unvoiced = len(
                     [f for f, speech in ring_buffer if not speech])
-                if num_unvoiced > 0.9 * maxlen:
+                if num_unvoiced > 0.8 * maxlen:
                     triggered = False
                     bs.append(b''.join(f for f in voiced_frames))
                     print('what the heck')
@@ -289,17 +289,17 @@ class VoiceChatSession:
                         write_wave(temp, b)
 
                         print(f"uploading {temp}")
-                        # glmFile = google.generativeai.upload_file(temp)
+                        glmFile = google.generativeai.upload_file(temp)
                         # self.broadcastMissions.put(av.open(temp))
                         os.remove(temp)
-                        # return glmFile
-                        return 1
+                        return glmFile
+                        # return 1
                         # return temp
 
                     async def proc_wrapper(proc_bs: list[bytes]):
                         files = [proc(b) for b in proc_bs]
                         print(f'uploaded audios: {files}')
-                        # await self.chat(files)
+                        await self.chat(files)
 
                     asyncio.ensure_future(proc_wrapper(bs))
 
