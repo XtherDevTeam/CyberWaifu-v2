@@ -12,7 +12,6 @@ from typing import Optional
 import wave
 
 import av
-from cv2 import broadcast
 import cv2
 from librosa import resample
 import livekit.api
@@ -161,8 +160,10 @@ class VoiceChatSession:
                 resp = self.bot.llm.initiate(self.message_queue)
                 self.bot.inChatting = True
             
-            if resp == 'OPT_GetUserMedia':
-                resp = self.bot.llm.chat([self.chatPluginGetUserMedia()])
+            if 'OPT_GetUserMedia' in resp:
+                logger.Logger.log('Getting user media')
+                resp = self.bot.llm.chat([self.getUserMedia()])
+                
             for i in self.dataProvider.parseModelResponse(resp):
                 self.ttsInvocation(i)
                 
@@ -478,7 +479,7 @@ class VoiceChatSession:
                     await source.capture_frame(livekitFrame)
                     # await asyncio.sleep(0.0001)
 
-    def chatPluginGetUserMedia(self) -> glm.File:
+    def getUserMedia(self) -> glm.File:
         """
         Get image of user's camera or sharing screen.
 
@@ -503,6 +504,7 @@ class VoiceChatSession:
             f.write(buffer)
 
         glmFile = google.generativeai.upload_file(temp)
+        logger.Logger.log(f"uploading {temp}", glmFile)
         os.remove(temp)
         return glmFile
 
