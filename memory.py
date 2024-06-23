@@ -6,6 +6,7 @@ memory.py
 import os
 import json
 import config
+import logger
 import models
 import dataProvider
 
@@ -20,7 +21,7 @@ class Memory:
         self.dataProvider = dProvider
         self.rtSession = rtSession
         # read character messages
-        print(char, self.dataProvider.getCharacterId(char), '114514')
+        logger.Logger.log(char, self.dataProvider.getCharacterId(char), '114514')
         self.char = self.dataProvider.getCharacter(
             self.dataProvider.getCharacterId(char))
 

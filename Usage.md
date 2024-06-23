@@ -23,4 +23,5 @@
 1. Complete the prerequisite steps
 2. Downloads and installs [livekit-server](https://github.com/livekit/livekit-server)
 3. Follow the instructions in the livekit-server repository to set up the server
-4. Use `make start_livekit` to start the livekit server
+4. Setup nginx to reverse proxy the livekit server. Example nginx configuration file is given in the blob directory.
+5. Use `make start_livekit` to start the livekit server

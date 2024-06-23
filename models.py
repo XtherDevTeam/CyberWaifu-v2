@@ -16,6 +16,7 @@ import whisper
 import config
 import time
 import os
+import logger
 import webFrontend.config
 
 from google_login import load_creds
@@ -32,10 +33,10 @@ def initialize():
     if config.AUTHENTICATE_METHOD == 'oauth':
         os.environ.pop('GOOGLE_API_KEY')
         gemini_configure(credentials=load_creds(), api_key=None)
-        print('Authenticated Google OAuth 2 session.')
-        print('Available base models:', [
+        logger.Logger.log('Authenticated Google OAuth 2 session.')
+        logger.Logger.log('Available base models:', [
             m.name for m in genai.list_tuned_models()])
-        print('My tuned models:', [m.name for m in genai.list_tuned_models()])
+        logger.Logger.log('My tuned models:', [m.name for m in genai.list_tuned_models()])
 
 
 # No need to handle by users, so not in config.py
@@ -112,7 +113,7 @@ def ImageParsingModelProvider():
 
 
 def ImageParsingModel(image: str) -> str:
-    print(image)
+    logger.Logger.log(image)
     llm = ImageParsingModelProvider()
     return llm.invoke([
         HumanMessage(

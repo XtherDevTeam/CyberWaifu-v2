@@ -10,6 +10,7 @@ import time
 import eventlet
 import livekit.api.room_service
 
+import logger
 import webFrontend.chatbotManager as chatbotManager
 import dataProvider
 import config
@@ -31,7 +32,7 @@ asyncio.set_event_loop(asyncEventLoop)
 
 
 async def getLiveKitAPI():
-    return livekit.api.LiveKitAPI(f"http://{webFrontend.config.LIVEKIT_API_URL}", webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET)
+    return livekit.api.LiveKitAPI(f"https://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}", webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET)
 
 
 def parseRequestRange(s, flen):
@@ -229,9 +230,9 @@ def attachmentUploadAudio():
         return {'data': 'not initialized', 'status': False}
 
     for i in flask.request.files:
-        print(flask.request.files[i].filename)
+        logger.Logger.log(flask.request.files[i].filename)
         mime = flask.request.files[i].mimetype
-        print(mime)
+        logger.Logger.log(mime)
         if not mime.startswith('audio/'):
             return {'data': 'invalid mimetype expect `audio/`', 'status': False}
         io = BytesIO()
@@ -249,7 +250,7 @@ def attachmentUploadImage():
         return {'data': 'not initialized', 'status': False}
 
     for i in flask.request.files:
-        print(flask.request.files[i].filename)
+        logger.Logger.log(flask.request.files[i].filename)
         mime = flask.request.files[i].mimetype
         if not mime.startswith('image/'):
             return {'data': 'invalid mimetype expect `image/`', 'status': False}
@@ -317,7 +318,7 @@ def charEdit(id):
 
     try:
         data = flask.request.get_json()
-        print(data)
+        logger.Logger.log(data)
         charName = data['charName']
         charPrompt = data['charPrompt']
         pastMemories = data['pastMemories']
@@ -471,7 +472,7 @@ def stickerAdd():
 
     try:
         for i in flask.request.files:
-            print(flask.request.files[i])
+            logger.Logger.log(flask.request.files[i])
             file = BytesIO()
             flask.request.files[i].save(file)
             file.seek(0)
@@ -844,8 +845,10 @@ def establishRealTimeVoiceChat():
     except:
         return {'data': 'invalid form', 'status': False}
 
-    if chatbotManager.checkIfRtSessionExist(charName):
-        return {'data': f'Session for {charName} already exists', 'status': False}
+    sessionName = chatbotManager.checkIfRtSessionExist(charName)
+    if sessionName is not None:
+        logger.Logger.log('Voice chat already exists, terminating old session')
+        chatbotManager.terminateRtSession(sessionName)
 
     sessionName = uuid.uuid4().hex
 
@@ -874,7 +877,7 @@ def establishRealTimeVoiceChat():
         try:
             newloop.run_forever()
         finally:
-            print('I died')
+            logger.Logger.log('I died')
             newloop.close()
     
     t = threading.Thread(target=th)

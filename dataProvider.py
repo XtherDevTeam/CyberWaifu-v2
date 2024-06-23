@@ -9,6 +9,7 @@ from GPTSoVits import GPTSoVitsAPI
 import config
 import hashlib
 import exceptions
+import logger
 import models
 import typing
 import uuid
@@ -945,7 +946,7 @@ class DataProvider:
                         'availableEmotions': ', '.join(i['name'] for i in availableEmotions),
                         'messageJSON': json.dumps(response)
                     })
-                print(prompt)
+                logger.Logger.log(prompt)
                 s = models.BaseModelProvider(1).invoke([langchain_core.messages.HumanMessage(
                     prompt
                 )]).content
@@ -959,7 +960,7 @@ class DataProvider:
                         raise RuntimeError(f'Invalid emotion: {i["emotion"]}')
                 return s
             except Exception as e:
-                print(str(e))
+                logger.Logger.log(str(e))
                 time.sleep(5)
                 pass
 
@@ -1000,12 +1001,12 @@ class DataProvider:
 
         serviceInfo = self.getGPTSoVitsService(serviceId)
         GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'])
-        print(response)
+        logger.Logger.log(response)
         
         r = self.convertModelResponseToTTSInput(response, serviceInfo['reference_audios'])
         result = []
         
-        print(r)
+        logger.Logger.log(r)
         for i in r:
             refAudio = self.getReferenceAudioByName(serviceId, i['emotion'])
             if refAudio is None:

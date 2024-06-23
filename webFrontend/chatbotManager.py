@@ -28,6 +28,7 @@ import noisereduce
 from GPTSoVits import GPTSoVitsAPI
 import SileroVAD
 import dataProvider
+import logger
 import memory
 import uuid
 import time
@@ -94,7 +95,8 @@ class VoiceChatSession:
         self.terminateSessionCallback = None
         self.loop: asyncio.AbstractEventLoop = None
         self.broadcastingThread: threading.Thread = None
-        print('initialized voice chat session')
+        self.connected: bool = False
+        logger.Logger.log('initialized voice chat session')
 
     def runBroadcastingLoop(self, audioSource) -> None:
         """
@@ -103,7 +105,7 @@ class VoiceChatSession:
         Returns:
             None
         """
-        print('starting broadcasting loop')
+        logger.Logger.log('starting broadcasting loop')
         new_loop = asyncio.new_event_loop()
         new_loop.run_until_complete(self.broadcastAudioLoop(audioSource))
 
@@ -143,7 +145,7 @@ class VoiceChatSession:
 
         self.message_queue.extend(audios)
         if self.chat_lock.locked():
-            print('wait for next round of sending')
+            logger.Logger.log('wait for next round of sending')
             pass
         else:
             curLen = len(self.message_queue)
@@ -177,7 +179,7 @@ class VoiceChatSession:
         Returns:
             numpy.ndarray: filtered audio signal
         """
-        # print(y)
+        # logger.Logger.log(y)
         filtered_signal = numpy.zeros_like(y)
         for i in range(len(y)):
             start = max(0, i - window_size // 2)
@@ -204,7 +206,7 @@ class VoiceChatSession:
         maxlen = 60
         triggered = False
         ext = mimetypes.guess_extension(mimeType)
-        print('using audio extension:', ext)
+        logger.Logger.log('using audio extension:', ext)
         if ext is None:
             raise exceptions.UnsupportedMimeType(
                 f"Unsupported audio mime type: {mimeType}")
@@ -214,29 +216,32 @@ class VoiceChatSession:
         last_sec_frames = 0
         last_frame : list[livekit.rtc.AudioFrame] = []
         async for frame in stream:
+            if not self.connected:
+                break
+            
             last_sec_frames += 1
             frames += 1
         
             
             if time.time() - last_sec > 1:
                 last_sec = time.time()
-                print(f"last second: {last_sec_frames} frames")
+                logger.Logger.log(f"last second: {last_sec_frames} frames")
                 last_sec_frames = 0
-                # print('processing frame')
+                # logger.Logger.log('processing frame')
 
             # this motherfking method reduced at least 40% performance, when using torch, it's even poorer
             # filtered_data = noisereduce.reduce_noise(y=frame.frame.data, sr=frame.frame.sample_rate, n_std_thresh_stationary=1.0, stationary=True, use_torch=False, device='cpu')
             # filtered_data = frame.frame.data
-            # print(len(frame.frame.data.tobytes()), len(
+            # logger.Logger.log(len(frame.frame.data.tobytes()), len(
                 # audio_data.tobytes()), len(filtered_data.tobytes()))
                 
             if frames % 4 == 0:
-                # print('40ms refresh')
+                # logger.Logger.log('40ms refresh')
                 pass
             else:
                 # last_frame = frame.frame
                 last_frame.append(frame.frame)
-                # print('refreshing buffer', last_frame)
+                # logger.Logger.log('refreshing buffer', last_frame)
                 continue
                 
             rb = b''
@@ -252,10 +257,10 @@ class VoiceChatSession:
             byteFrame = numpy_data.astype(numpy.int16).tobytes()
             # wholeFrame = livekit.rtc.AudioFrame(
                 # data=byteFrame, sample_rate=frame.frame.sample_rate, samples_per_channel=frame.frame.samples_per_channel, num_channels=frame.frame.num_channels)
-            # print(f"frame len: {len(wholeFrame.data)}")
+            # logger.Logger.log(f"frame len: {len(wholeFrame.data)}")
 
             isSpeech = SileroVAD.SileroVAD.predict(numpy_data, frame.frame.sample_rate)
-            # print(f"is speech: {isSpeech}")
+            # logger.Logger.log(f"is speech: {isSpeech}")
             isSpeech = isSpeech > 0.7
             
             if not triggered:
@@ -274,7 +279,7 @@ class VoiceChatSession:
                 if num_unvoiced > 0.8 * maxlen:
                     triggered = False
                     bs.append(b''.join(f for f in voiced_frames))
-                    print('what the heck')
+                    logger.Logger.log('what the heck')
 
                     def proc(b: bytes):
                         temp = self.dataProvider.tempFilePathProvider('wav')
@@ -288,7 +293,7 @@ class VoiceChatSession:
 
                         write_wave(temp, b)
 
-                        print(f"uploading {temp}")
+                        logger.Logger.log(f"uploading {temp}")
                         glmFile = google.generativeai.upload_file(temp)
                         # self.broadcastMissions.put(av.open(temp))
                         os.remove(temp)
@@ -298,10 +303,18 @@ class VoiceChatSession:
 
                     async def proc_wrapper(proc_bs: list[bytes]):
                         files = [proc(b) for b in proc_bs]
-                        print(f'uploaded audios: {files}')
+                        logger.Logger.log(f'uploaded audios: {files}')
                         await self.chat(files)
 
-                    asyncio.ensure_future(proc_wrapper(bs))
+                    def thread_wrapper(bs: list[bytes]):
+                        loop = asyncio.new_event_loop()
+                        x = []
+                        x.extend(bs)
+                        loop.run_until_complete(proc_wrapper(x))
+                        loop.close()
+                        logger.Logger.log('I died')
+
+                    threading.Thread(target=thread_wrapper, args=(bs,)).start()
 
                     ring_buffer = []
                     voiced_frames = []
@@ -317,7 +330,10 @@ class VoiceChatSession:
         Returns:
             None
         """
-        path = self.dataProvider.tempFilePathProvider('jpg')
+        async for frame in stream:
+            if not self.connected:
+                break
+            self.currentImageFrame = frame.frame
 
     async def start(self, botToken: str, loop: asyncio.AbstractEventLoop) -> None:
         """
@@ -327,34 +343,35 @@ class VoiceChatSession:
             None
         """
 
-        print('preparing to start chat...')
+        logger.Logger.log('preparing to start chat...')
         self.loop = loop
         self.chatRoom = livekit.rtc.Room(loop)
+        self.connected = True
 
         @self.chatRoom.on("track_subscribed")
         def on_track_subscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
-            print(f"track subscribed: {publication.sid}")
+            logger.Logger.log(f"track subscribed: {publication.sid}")
             if track.kind == livekit.rtc.TrackKind.KIND_VIDEO:
-                print('running video stream...')
+                logger.Logger.log('running video stream...')
                 asyncio.ensure_future(self.receiveVideoStream(
                     livekit.rtc.VideoStream(track)))
             elif track.kind == livekit.rtc.TrackKind.KIND_AUDIO:
-                print('running voice activity detection...')
+                logger.Logger.log('running voice activity detection...')
                 asyncio.ensure_future(
                     self.VAD(livekit.rtc.AudioStream(track), publication.mime_type))
 
         @self.chatRoom.on("track_unsubscribed")
         def on_track_unsubscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
-            print(f"track unsubscribed: {publication.sid}")
+            logger.Logger.log(f"track unsubscribed: {publication.sid}")
 
         @self.chatRoom.on("participant_connected")
         def on_participant_connected(participant: livekit.rtc.RemoteParticipant):
-            print(f"participant connected: {
+            logger.Logger.log(f"participant connected: {
                 participant.identity} {participant.sid}")
 
         @self.chatRoom.on("participant_disconnected")
         def on_participant_disconnected(participant: livekit.rtc.RemoteParticipant):
-            print(
+            logger.Logger.log(
                 f"participant disconnected: {
                     participant.sid} {participant.identity}"
             )
@@ -369,10 +386,10 @@ class VoiceChatSession:
 
         @self.chatRoom.on("connected")
         def on_connected() -> None:
-            print("connected")
+            logger.Logger.log("connected")
 
-        print('connecting to room...')
-        await self.chatRoom.connect(f"ws://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}", botToken)
+        logger.Logger.log('connecting to room...')
+        await self.chatRoom.connect(f"wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}", botToken)
 
         # publish track
         audioSource = livekit.rtc.AudioSource(
@@ -382,14 +399,14 @@ class VoiceChatSession:
         # we don't support audio/red format
         publication = await self.chatRoom.local_participant.publish_track(
             self.broadcastAudioTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_MICROPHONE, red=False))
-        print(f"broadcast audio track published: {
+        logger.Logger.log(f"broadcast audio track published: {
             publication.track.name}")
 
         self.broadcastingThread = threading.Thread(
             target=self.runBroadcastingLoop, args=(audioSource,))
         self.broadcastingThread.start()
 
-        print('chat session started')
+        logger.Logger.log('chat session started')
 
     def generateEmptyAudioFrame(self) -> livekit.rtc.AudioFrame:
         """
@@ -410,7 +427,7 @@ class VoiceChatSession:
             webFrontend.config.LIVEKIT_SAMPLE_RATE
         wave = numpy.int16(0)
         numpy.copyto(audio_data, wave)
-        # print('done1')
+        # logger.Logger.log('done1')
         return audio_frame
 
     def fetchBroadcastMission(self) -> None:
@@ -424,38 +441,38 @@ class VoiceChatSession:
         return self.currentBroadcastMission
 
     async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int = 1000):
-        print('broadcasting audio...')
-        while True:
-            # print(self.broadcastMissions.qsize(), 'missions in queue')
+        logger.Logger.log('broadcasting audio...')
+        while self.connected:
+            # logger.Logger.log(self.broadcastMissions.qsize(), 'missions in queue')
             if self.fetchBroadcastMission() is None:
-                # print('capturing empty audio frame...')
+                # logger.Logger.log('capturing empty audio frame...')
                 await source.capture_frame(self.generateEmptyAudioFrame())
-                # print('done2')
+                # logger.Logger.log('done2')
             else:
-                print('broadcasting mission...')
+                logger.Logger.log('broadcasting mission...')
                 frame: Optional[av.AudioFrame] = None
                 start = time.time()
                 count = 0
                 for frame in self.currentBroadcastMission.decode(audio=0):
-                    # print(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
+                    # logger.Logger.log(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
                     # frame.layout.channels), [i for i in frame.side_data.keys()])
                     try:
                         # sizeof(int16) =
-                        # print out attrs of livekitFrame when initializing it.
-                        # print(frame.samples * 2, len(frame.to_ndarray().astype(numpy.int16).tobytes()))
+                        # logger.Logger.log out attrs of livekitFrame when initializing it.
+                        # logger.Logger.log(frame.samples * 2, len(frame.to_ndarray().astype(numpy.int16).tobytes()))
                         resampledFrame = av.AudioResampler(
                             format='s16', layout='mono', rate=webFrontend.config.LIVEKIT_SAMPLE_RATE).resample(frame)[0]
-                        # print(resampledFrame.samples * 2, len(resampledFrame.to_ndarray().astype(numpy.int16).tobytes()))
+                        # logger.Logger.log(resampledFrame.samples * 2, len(resampledFrame.to_ndarray().astype(numpy.int16).tobytes()))
                         livekitFrame = livekit.rtc.AudioFrame(
                             data=resampledFrame.to_ndarray().astype(numpy.int16).tobytes(),
                             sample_rate=resampledFrame.sample_rate,
                             num_channels=len(resampledFrame.layout.channels),
                             samples_per_channel=resampledFrame.samples // len(resampledFrame.layout.channels),)
-                        # print(livekitFrame.sample_rate, livekitFrame.num_channels, livekitFrame.samples_per_channel, len(livekitFrame.data))
+                        # logger.Logger.log(livekitFrame.sample_rate, livekitFrame.num_channels, livekitFrame.samples_per_channel, len(livekitFrame.data))
                     except Exception as e:
                         raise e
                         # if there's problem with the frame, skip it and continue to the next one.
-                        print('Error processing frame, skipping it.')
+                        logger.Logger.log('Error processing frame, skipping it.')
                         continue
                     # while time.time() < future:
                     await source.capture_frame(livekitFrame)
@@ -496,19 +513,16 @@ class VoiceChatSession:
         FIXME: it will only be triggered when other events received first. strange
         """
         # self.bot.terminateChat()
+        self.connected = False
+        logger.Logger.log('Triggering terminate session callback')
         self.terminateSessionCallback()
 
         async def f():
-            print('terminating chat session...')
+            logger.Logger.log('terminating chat session...')
             self.bot.terminateChat()
-            # raise an exception to stop the loop
-            self.broadcastMissions = None
             SileroVAD.SileroVAD.reset()
-            # self.terminateSessionCallback()
             await self.chatRoom.disconnect()
 
-        print(asyncio.get_event_loop(), self.loop)
-        # self.loop.stop()
         asyncio.ensure_future(f())
 
 
@@ -558,17 +572,21 @@ class chatbotManager:
 
         return sessionName
 
-    def checkIfRtSessionExist(self, sessionName: str) -> bool:
+    def checkIfRtSessionExist(self, charName: str) -> str | None:
         """
         Check if a real time session exists for a character
 
         Args:
-            sessionName (str): session name
+            charName (str): session name
 
         Returns:
-            bool: True if the session exists, False otherwise
+            str: session name if exists, otherwise None
         """
-        return sessionName in self.rtPool
+        for i in self.rtPool:
+            if self.rtPool[i]['charName'] == charName:
+                return i
+        
+        return None
 
     def createRtSession(self, charName: str, sessionName: str, voiceSession: VoiceChatSession) -> str:
         """
@@ -591,7 +609,7 @@ class chatbotManager:
                     f"Session for {charName} already exists")
 
         def terminateCallback():
-            print(f'Terminating real time session {sessionName}')
+            logger.Logger.log(f'Terminating real time session {sessionName}')
             self.terminateRtSession(sessionName)
 
         voiceSession.terminateSessionCallback = terminateCallback
@@ -608,7 +626,7 @@ class chatbotManager:
             r: instance.Chatbot = self.pool[sessionName]['bot']
             if doRenew:
                 self.pool[sessionName]['expireTime'] = time.time() + 60 * 5
-                print('Session renewed: ',
+                logger.Logger.log('Session renewed: ',
                       self.pool[sessionName]['expireTime'])
             return r
         else:
@@ -677,7 +695,7 @@ class chatbotManager:
 
             result = []
 
-            print('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(
+            logger.Logger.log('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(
                 sessionName).memory.getCharTTSServiceId() != 0) else 'False')
             if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 1) == 0:
                 # remove all emojis in `plain`
@@ -757,7 +775,7 @@ class chatbotManager:
             charName = self.getSession(sessionName, False).memory.getCharName()
             self.getSession(sessionName, False).terminateChat()
             del self.pool[sessionName]
-            print(f'Terminated session {sessionName}')
+            logger.Logger.log(f'Terminated session {sessionName}')
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
@@ -765,7 +783,7 @@ class chatbotManager:
     def clearSessonThread(self) -> None:
         while True:
             for i in [k for k in self.pool.keys()]:
-                print(i, time.time(), self.pool[i]['expireTime'])
+                logger.Logger.log(i, time.time(), self.pool[i]['expireTime'])
                 if time.time() > self.pool[i]['expireTime']:
                     self.terminateSession(i)
             # do not clean real time session pool until users terminate it themselves

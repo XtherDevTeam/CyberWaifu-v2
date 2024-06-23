@@ -1,5 +1,6 @@
 import config
 from dataProvider import DataProvider
+import logger
 import memory
 import os
 import instance
@@ -30,6 +31,7 @@ if __name__ == "__main__":
     if args.frontend:
         cmdlineFrontend.interactiveFrontend(instance.Chatbot(memory.Memory(dProvider, args.char), args.user))
     if args.server:
+        logger.Logger.log('WDNMD')
         webFrontend.web.invoke()
     elif args.new:
         cmdlineFrontend.createNewCharacter(dProvider)

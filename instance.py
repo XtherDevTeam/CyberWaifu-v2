@@ -3,6 +3,7 @@ import os
 from re import I
 from typing import Any, Optional
 import typing
+import logger
 import models
 import chatModel
 import config
@@ -33,7 +34,7 @@ class Chatbot:
 
     def switchUser(self, name: str) -> None:
         if self.inChatting:
-            print('Unable to perform this action: Character is chatting!')
+            logger.Logger.log('Unable to perform this action: Character is chatting!')
         else:
             self.userName = name
 
@@ -41,14 +42,14 @@ class Chatbot:
         modelInput = self.convertMessageListToInput(userInput)
         msg = self.llm.initiate(modelInput)
         self.conversation.storeBotInput(chatModel.AIMessage(msg))
-        print(msg)
+        logger.Logger.log(msg)
         return msg
 
     def getAvailableStickers(self) -> list[str]:
         return [i['name'] for i in self.memory.getAvailableStickers()]
 
     def convertMessageToInput(self, message: dict[str, str]) -> str | glm.File:
-        print(message)
+        logger.Logger.log(message)
         if message['content_type'] == 'text':
             return message['content']
         elif message['content_type'] == 'image':
@@ -61,7 +62,7 @@ class Chatbot:
                 f.write(binary)
             
             r = genai.upload_file(fp, mime_type=mime)
-            print('Removing temporary file:', fp)
+            logger.Logger.log('Removing temporary file:', fp)
             os.remove(fp)
             return r
         elif message['content_type'] == 'audio':
@@ -73,7 +74,7 @@ class Chatbot:
                 f.write(binary)
 
             r = genai.upload_file(fp, mime_type=mime)
-            print('Removing temporary file:', fp)
+            logger.Logger.log('Removing temporary file:', fp)
             os.remove(fp)
             return r
         else:
@@ -89,7 +90,7 @@ class Chatbot:
 
         msg = self.llm.chat(modelInput)
         self.conversation.storeBotInput(chatModel.AIMessage(msg))
-        print(msg)
+        logger.Logger.log(msg)
         return msg
 
     def termination(self) -> None:
