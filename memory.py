@@ -9,6 +9,7 @@ import config
 import logger
 import models
 import dataProvider
+import tools
 
 
 class Memory:
@@ -71,7 +72,7 @@ class Memory:
             return models.PreprocessPrompt(config.VOICE_CHAT_INITIAL_PROMPT, {
                 'charName': self.getCharName(),
                 'userName': userName,
-                'datePrompt': models.TimeProider(),
+                'datePrompt': tools.TimeProvider(),
                 'charPrompt': self.getCharPrompt(),
                 'memoryPrompt': self.getPastMemories(),
                 'exampleChats': self.getExampleChats()
@@ -84,7 +85,7 @@ class Memory:
             return models.PreprocessPrompt(config.INITIAL_PROMPT, {
                 'charName': self.getCharName(),
                 'userName': userName,
-                'datePrompt': models.TimeProider(),
+                'datePrompt': tools.TimeProvider(),
                 'charPrompt': self.getCharPrompt(),
                 'memoryPrompt': self.getPastMemories(),
                 'exampleChats': self.getExampleChats(),

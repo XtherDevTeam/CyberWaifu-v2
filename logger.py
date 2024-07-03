@@ -2,9 +2,7 @@ import os
 import sys
 from typing import TextIO
 
-from joblib import Logger
-
-import models
+import tools
 
 class _Logger():
     def __init__(self, name: str, file: str):
@@ -21,7 +19,7 @@ class _Logger():
             return open(self.filename, "a")
 
     def log(self, message, *args):
-        self.io.write(f'[{self.name}][{models.TimeProider()}] {message} {" ".join(str(arg) for arg in args)}\n')
+        self.io.write(f'[{self.name}][{tools.TimeProvider()}] {message} {" ".join(str(arg) for arg in args)}\n')
         self.io.flush()
         
 Logger = _Logger('CyberWaifu V2 backend', 'stdout')

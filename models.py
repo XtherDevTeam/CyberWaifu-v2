@@ -4,6 +4,7 @@ Provides packages for model operating
 """
 
 
+import tools
 import types
 import chatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -54,14 +55,6 @@ def TokenCounter(string: str) -> int:
     return ChatGoogleGenerativeAI(model=config.USE_MODEL).get_num_tokens(string)
 
 
-def TimeProider() -> str:
-    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-
-
-def DateProider() -> str:
-    return time.strftime('%Y-%m-%d', time.localtime())
-
-
 def PreprocessPrompt(originalPrompt: str, tVars):
     for i in tVars:
         originalPrompt = originalPrompt.replace('{{' + i + '}}', tVars[i])
@@ -83,7 +76,7 @@ def ChatModelProvider(system_prompt: str, enabled_plugins: list[dict]) -> chatMo
         temperature=0.9,
         safety_settings=MODEL_SAFETY_SETTING,
         system_prompt=system_prompt,
-        tools=enabled_plugins
+        tools=enabled_plugins,
     )
 
 

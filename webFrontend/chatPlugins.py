@@ -6,6 +6,7 @@ Chat plugins for Gemini-1.5-Pro model
 import datetime
 import math
 import models
+import tools
 
 
 def calculate(expression: str) -> int | float | str:
@@ -22,14 +23,17 @@ def calculate(expression: str) -> int | float | str:
     """
     return eval(expression, globals(), locals())
 
-def time() -> str:
+def time(dummy_arg: str = None) -> str:
     """
     Get the current time in HH:MM:SS format.
+    
+    Args:
+        dummy_arg (str): Dummy argument to make the function callable. Set this to ""
 
     Returns:
         str: The current time in HH:MM:SS format.
     """
-    return models.TimeProider()
+    return tools.TimeProvider()
 
 def defaultPluginList():
     return [

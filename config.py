@@ -15,7 +15,7 @@ GPT_SoVITS_SERVICE_URL = ''
 
 # the model going to be used in the chat
 # fk google. wasted 2 days of my life to find out where is this api and found this shit came out after 1 week.
-USE_MODEL = "models/gemini-1.5-flash-latest"
+USE_MODEL = "models/gemini-1.5-pro-latest"
 USE_LEGACY_MODEL = "models/gemini-pro"
 
 # the model going to be used in the image parsing
