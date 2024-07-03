@@ -116,7 +116,7 @@ def userLogin():
         data = flask.request.get_json()
         pwd = data['password']
     except Exception as e:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     if dProvider.authenticate(pwd):
         flask.session['user'] = int(time.time())
@@ -149,7 +149,7 @@ def chatEstablish():
         charName = data['charName']
         beginMsg = data['msgChain']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     session = chatbotManager.createSession(charName)
     if len(beginMsg) == 1 and beginMsg[0].strip() == '':
@@ -173,7 +173,7 @@ def chatMessage():
         session = data['session']
         msgChain = data['msgChain']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     if len(msgChain) == 1 and msgChain[0].strip() == '':
         return {'status': False, 'data': 'Null message'}
@@ -197,7 +197,7 @@ def chatKeepAlive():
         data = flask.request.get_json()
         session = data['session']
     except Exception as e:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     chatbotManager.getSession(session)
     return {'data': 'success', 'status': True}
@@ -215,7 +215,7 @@ def chatTerminate():
         data = flask.request.get_json()
         session = data['session']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     chatbotManager.terminateSession(session)
 
@@ -287,7 +287,7 @@ def charInfo(id):
 
         return {'data': d, 'status': True}
     except ValueError:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
 
 @app.route("/api/v1/char/<id>/avatar", methods=["GET"])
@@ -326,7 +326,7 @@ def charEdit(id):
         useStickerSet = data['useStickerSet']
         useTTSService = data['useTTSService']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.updateCharacter(
         int(id), charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
@@ -361,7 +361,7 @@ def charNew():
         useStickerSet = data['useStickerSet']
         useTTSService = data['useTTSService']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.createCharacter(
         charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
@@ -432,7 +432,7 @@ def stickerAddSet():
     try:
         setName = flask.request.json['setName']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     dProvider.createStickerSet(setName)
     return {'status': True}
@@ -449,7 +449,7 @@ def stickerDeleteSet():
     try:
         setId = flask.request.json['setId']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     dProvider.deleteStickerSet(setId)
     return {'status': True}
@@ -468,7 +468,7 @@ def stickerAdd():
         setId = flask.request.args['setId']
         stickerName = flask.request.args['stickerName']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     try:
         for i in flask.request.files:
@@ -495,7 +495,7 @@ def stickerDelete():
     try:
         stickerId = flask.request.json['stickerId']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     dProvider.deleteSticker(stickerId)
 
@@ -515,7 +515,7 @@ def stickerGet():
         setId = flask.request.args['setId']
         stickerName = flask.request.args['name']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     try:
         mime, blob = dProvider.getSticker(setId, stickerName)
@@ -537,7 +537,7 @@ def stickerSetInfo():
     try:
         setId = flask.request.json['setId']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     d = dProvider.getStickerSetInfo(setId)
     if d is None:
@@ -558,7 +558,7 @@ def stickerRenameSet():
         setId = flask.request.json['setId']
         newSetName = flask.request.json['newSetName']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     dProvider.renameStickerSet(setId, newSetName)
     return {'status': True}
@@ -588,7 +588,7 @@ def stickerList():
     try:
         setId = flask.request.json['setId']
     except:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     return {
         'data': dProvider.getStickerList(setId),
@@ -606,14 +606,17 @@ def ttsCreate():
     name = ''
     description = ''
     url = ''
+    ttsInferYamlPath = ''
+    
     try:
         name = flask.request.json['name']
         description = flask.request.json['description']
         url = flask.request.json['url']
+        ttsInferYamlPath = flask.request.json['ttsInferYamlPath']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
-    dProvider.addGPTSoVitsService(name, url, description)
+    dProvider.addGPTSoVitsService(name, url, description, ttsInferYamlPath)
     return {'status': True}
 
 
@@ -636,7 +639,7 @@ def ttsRefAudioAdd():
         path = flask.request.json['path']
         language = flask.request.json['language']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     dProvider.addGPTSoVitsReferenceAudio(serviceId, name, text, path, language)
     return {'status': True}
@@ -653,7 +656,7 @@ def ttsRefAudioDelete():
     try:
         id = flask.request.json['id']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     dProvider.deleteGPTSoVitsReferenceAudio(id)
     return {'status': True}
@@ -682,7 +685,7 @@ def ttsService(id):
     try:
         id = int(id)
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     r = dProvider.getGPTSoVitsService(id)
     if r is None:
@@ -702,7 +705,7 @@ def ttsServiceDelete():
     try:
         id = int(flask.request.json['id'])
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     dProvider.deleteGPTSoVitsService(id)
     return {'status': True}
@@ -719,16 +722,18 @@ def ttsServiceUpdate():
     name = ''
     description = ''
     url = ''
+    ttsInferYamlPath = ''
     try:
         id = flask.request.json['id']
         name = flask.request.json['name']
         description = flask.request.json['description']
         url = flask.request.json['url']
+        ttsInferYamlPath = flask.request.json['ttsInferYamlPath']
     except Exception as e:
-        return {'status': False, 'data': 'invalid form'}
+        return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     try:
-        dProvider.updateGPTSoVitsService(id, name, url, description)
+        dProvider.updateGPTSoVitsService(id, name, url, description, ttsInferYamlPath)
         return {'status': True}
     except:
         return {'status': False, 'data': 'service not exist'}
@@ -789,7 +794,7 @@ def updateUsername():
         data = flask.request.get_json()
         userName = data['userName']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.updateUsername(userName)
     return {'data': 'success', 'status': True}
@@ -806,7 +811,7 @@ def updatePassword():
         data = flask.request.get_json()
         password = data['password']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.updatePassword(password)
     return {'data': 'success', 'status': True}
@@ -824,7 +829,7 @@ def initialize():
         userName = data['userName']
         password = data['password']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.initialize(userName, password)
     flask.session['user'] = int(time.time())
@@ -843,7 +848,7 @@ def establishRealTimeVoiceChat():
         data = flask.request.get_json()
         charName = data['charName']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     sessionName = chatbotManager.checkIfRtSessionExist(charName)
     if sessionName is not None:
@@ -899,7 +904,7 @@ def terminateRealTimeVoiceChat():
         data = flask.request.get_json()
         sessionName = data['session']
     except:
-        return {'data': 'invalid form', 'status': False}
+        return {'data': f'invalid form: {str(e)}', 'status': False}
 
     try:
         chatbotManager.terminateRtSession(sessionName)

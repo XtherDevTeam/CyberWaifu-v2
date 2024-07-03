@@ -108,7 +108,7 @@ class VoiceChatSession:
         new_loop = asyncio.new_event_loop()
         new_loop.run_until_complete(self.broadcastAudioLoop(audioSource))
 
-    def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> 'av.InputContainer':
+    def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> None:
         """
         Invoke GPT-SoVITs TTS service to generate audio file for the parsed response.
 
@@ -119,17 +119,19 @@ class VoiceChatSession:
             exceptions.ReferenceAudioNotFound: Reference audio for emotion not found.
 
         Returns:
-            'av.InputContainer' | 'av.OutputContainer': audio file for the parsed response.
+            None
         """
         r = self.dataProvider.convertModelResponseToTTSInput(
-            [parsedResponse], self.ttsService['reference_audios'])[0]
-        refAudio = self.dataProvider.getReferenceAudioByName(
-            self.ttsServiceId, r['emotion'])
-        if refAudio is None:
-            raise exceptions.ReferenceAudioNotFound(
-                f"Reference audio for emotion {r['emotion']} not found")
-        self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.tts(
-            refAudio['path'], refAudio['text'], r['text'], refAudio['language']).raw))
+            [parsedResponse], self.ttsService['reference_audios'])
+        
+        for i in r:
+            refAudio = self.dataProvider.getReferenceAudioByName(
+                self.ttsServiceId, i['emotion'])
+            if refAudio is None:
+                raise exceptions.ReferenceAudioNotFound(
+                    f"Reference audio for emotion {i['emotion']} not found")
+            self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.tts(
+                refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw))
 
     async def chat(self, audios: list[glm.File]) -> None:
         """
@@ -161,11 +163,9 @@ class VoiceChatSession:
                 self.bot.inChatting = True
             
             if 'OPT_GetUserMedia' in resp:
-                logger.Logger.log('Getting user media')
                 resp = self.bot.llm.chat([self.getUserMedia()])
                 
-            for i in self.dataProvider.parseModelResponse(resp):
-                self.ttsInvocation(i)
+            self.ttsInvocation(self.dataProvider.parseModelResponse(resp))    
                 
             self.message_queue = []
 

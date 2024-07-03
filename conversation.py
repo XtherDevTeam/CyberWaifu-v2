@@ -12,7 +12,18 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 class ConversationMemory:
     """
     ConversationMemory
-    @brief accept userName, and character memory object, and initialize converation history for chatbot instance
+    accept userName, and character memory object, and initialize converation history for chatbot instance
+    
+    Attributes:
+        memory: list of messages in conversation
+        userName: user name of the conversation
+        char: character memory object for the conversation
+    
+    
+    Methods:
+        getConversation: return the conversation history
+        storeUserInput: store user input message in conversation history
+        storeBotInput: store bot input message in conversation history
     """
 
     def __init__(self, userName, char: memory.Memory) -> None:
@@ -27,9 +38,5 @@ class ConversationMemory:
         self.memory.append(input)
 
     def storeBotInput(self, input: AIMessage) -> None:
-        """
-        for i in input.content.split('(OPT_MULTI_CUR_MSG_END)'):
-            self.memory.append(AIMessage(i.strip()))
-        """
         self.memory.append(input)
             

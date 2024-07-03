@@ -58,7 +58,8 @@ create table GPTSoVitsServices (
     id                      integer PRIMARY KEY AUTOINCREMENT,
     name                    string NOT NULL,
     url                     string NOT NULL,
-    description             string NOT NULL
+    description             string NOT NULL,
+    ttsInferYamlPath        string NOT NULL default 'GPT_SoVITS/configs/tts_infer.yaml',
 );
 
 create table GPTSoVitsReferenceAudios (

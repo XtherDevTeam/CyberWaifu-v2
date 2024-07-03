@@ -18,6 +18,8 @@ import os
 import chatModel
 import langchain_core.messages
 
+import tools
+
 
 class AttachmentType:
     """
@@ -342,7 +344,7 @@ class DataProvider:
         """
         with open(avatarPath, 'rb') as file:
             return self.db.query('insert into personalCharacter (charName, ttsServiceId, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                                 (name, useTTSService, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, models.DateProider()))
+                                 (name, useTTSService, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, tools.DateProvider()))
 
     def checkIfCharacterExist(self, name: int) -> bool:
         """
@@ -601,7 +603,7 @@ class DataProvider:
         Returns:
             list[dict[str, int | str]]: List of chat messages.
         """
-        # fetch latest 24 history 
+        # fetch latest 24 history
         time = 24
         charName = self.getCharacter(charId)['charName']
 
@@ -812,7 +814,7 @@ class DataProvider:
         """
         return config.generateTempPath(extension)
 
-    def addGPTSoVitsService(self, name: str, url: str, description: str) -> None:
+    def addGPTSoVitsService(self, name: str, url: str, description: str, ttsInferYamlPath: str) -> None:
         """
         Adds a new GPT-SoVits service to the database.
 
@@ -820,10 +822,11 @@ class DataProvider:
             name (str): Name of the service.
             url (str): URL of the service.
             description (str): Description of the service.
+            ttsInferYamlPath (str): Path to the TTS inference YAML file.
         """
 
-        self.db.query("insert into GPTSoVitsServices (name, url, description) values (?,?,?)",
-                      (name, url, description))
+        self.db.query("insert into GPTSoVitsServices (name, url, description, GPTWeightsPath, SoVitsWeightsPath) values (?,?,?,?,?)",
+                      (name, url, description, ttsInferYamlPath))
 
     def addGPTSoVitsReferenceAudio(self, serviceId: int, name: str, text: str, path: str, language: str) -> None:
         """
@@ -859,7 +862,7 @@ class DataProvider:
             list[dict[str, str | int]]: List of GPT-SoVits services with their IDs, names, and descriptions.
         """
 
-        return self.db.query('select id, name, description, url from GPTSoVitsServices')
+        return self.db.query('select id, name, description, url, ttsInferYamlPath from GPTSoVitsServices')
 
     def getGPTSoVitsService(self, serviceId: int) -> dict[str, str | int] | None:
         """
@@ -886,6 +889,7 @@ class DataProvider:
             'name': i['name'],
             'url': i['url'],
             'description': i['description'],
+            'ttsInferYamlPath': i['ttsInferYamlPath'],
             'reference_audios': j
         }
 
@@ -899,8 +903,12 @@ class DataProvider:
 
         self.db.query(
             "delete from GPTSoVitsServices where id = ?", (serviceId, ))
+        
+        # bugfix: delete reference audios
+        self.db.query(
+            "delete from GPTSoVitsReferenceAudios where serviceId = ?", (serviceId, ))
 
-    def updateGPTSoVitsService(self, serviceId: int, name: str, url: str, description: str) -> None:
+    def updateGPTSoVitsService(self, serviceId: int, name: str, url: str, description: str, ttsInferYamlPath: str) -> None:
         """
         Updates a GPT-SoVits service.
 
@@ -909,10 +917,11 @@ class DataProvider:
             name (str): Name of the service.
             url (str): URL of the service.
             description (str): Description of the service.
+            ttsInferYamlPath (str): Path to the TTS inference YAML file.
         """
 
-        self.db.query("update GPTSoVitsServices set name = ?, url = ?, description = ? where id = ?",
-                      (name, url, description, serviceId))
+        self.db.query("update GPTSoVitsServices set name = ?, url = ?, description = ?, ttsInferYamlPath = ? where id = ?",
+                      (name, url, description, serviceId, ttsInferYamlPath))
 
     def getAvailableTTSReferenceAudio(self, serviceId: int) -> list[str]:
         """
@@ -943,18 +952,18 @@ class DataProvider:
         for _ in range(config.MAX_CHAT_RETRY_COUNT):
             try:
                 prompt = models.PreprocessPrompt(config.TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT, {
-                        'availableEmotions': ', '.join(i['name'] for i in availableEmotions),
-                        'messageJSON': json.dumps(response)
-                    })
+                    'availableEmotions': ', '.join(i['name'] for i in availableEmotions),
+                    'messageJSON': json.dumps(response)
+                })
                 logger.Logger.log(prompt)
                 s = models.BaseModelProvider(1).invoke([langchain_core.messages.HumanMessage(
                     prompt
                 )]).content
-                
+
                 # force to retrieve json response
                 s = s[s.find('['): s.rfind(']')+1]
                 s = json.loads(s)
-                
+
                 for i in s:
                     if i['emotion'] not in [j['name'] for j in availableEmotions]:
                         raise RuntimeError(f'Invalid emotion: {i["emotion"]}')
@@ -1002,23 +1011,26 @@ class DataProvider:
         serviceInfo = self.getGPTSoVitsService(serviceId)
         GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'])
         logger.Logger.log(response)
-        
-        r = self.convertModelResponseToTTSInput(response, serviceInfo['reference_audios'])
+
+        r = self.convertModelResponseToTTSInput(
+            response, serviceInfo['reference_audios'])
         result = []
-        
+
         logger.Logger.log(r)
         for i in r:
             refAudio = self.getReferenceAudioByName(serviceId, i['emotion'])
             if refAudio is None:
-                raise exceptions.ReferenceAudioNotFound(f'Could not find reference audio for emotion {i["emotion"]}')
-            attachment = self.saveAudioAttachment(GPTSoVitsEndpoint.tts(refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw.read(), 'audio/wav')
+                raise exceptions.ReferenceAudioNotFound(
+                    f'Could not find reference audio for emotion {i["emotion"]}')
+            attachment = self.saveAudioAttachment(GPTSoVitsEndpoint.tts(
+                refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw.read(), 'audio/wav')
             result.append({
                 'type': ChatHistoryType.AUDIO,
                 'role': 'model',
                 'text': attachment,
                 'timestamp': int(time.time()),
             })
-            
+
         return result
 
     def updateUsername(self, username: str) -> None:
