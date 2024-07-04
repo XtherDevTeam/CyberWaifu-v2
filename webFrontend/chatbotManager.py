@@ -87,7 +87,7 @@ class VoiceChatSession:
         self.ttsServiceId = self.bot.memory.getCharTTSServiceId()
         self.ttsService = self.dataProvider.getGPTSoVitsService(
             self.ttsServiceId)
-        self.GPTSoVITsAPI = GPTSoVitsAPI(self.ttsService['url'])
+        self.GPTSoVITsAPI = GPTSoVitsAPI(self.ttsService['url'], isTTSv3=True, ttsInferYamlPath=self.ttsService['ttsInferYamlPath'])
         self.vadModel = webrtcvad.Vad(3)
         self.chat_lock = threading.Lock()
         self.message_queue: list[glm.File] = []
@@ -122,7 +122,7 @@ class VoiceChatSession:
             None
         """
         r = self.dataProvider.convertModelResponseToTTSInput(
-            [parsedResponse], self.ttsService['reference_audios'])
+            parsedResponse, self.ttsService['reference_audios'])
         
         for i in r:
             refAudio = self.dataProvider.getReferenceAudioByName(
@@ -168,25 +168,6 @@ class VoiceChatSession:
             self.ttsInvocation(self.dataProvider.parseModelResponse(resp))    
                 
             self.message_queue = []
-
-    def signal_filter(self, y: numpy.ndarray, window_size=20) -> numpy.ndarray:
-        """
-        Filter the audio signal using a moving average filter.
-
-        Args:
-            y (numpy.ndarray): audio signal
-            window_size (int, optional): window size for moving average filter. Defaults to 20.
-
-        Returns:
-            numpy.ndarray: filtered audio signal
-        """
-        # logger.Logger.log(y)
-        filtered_signal = numpy.zeros_like(y)
-        for i in range(len(y)):
-            start = max(0, i - window_size // 2)
-            end = min(len(y), i + window_size // 2)
-            filtered_signal[i] = numpy.mean(y[start:end])
-        return filtered_signal
 
     async def VAD(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
@@ -699,7 +680,8 @@ class chatbotManager:
 
             logger.Logger.log('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(
                 sessionName).memory.getCharTTSServiceId() != 0) else 'False')
-            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 1) == 0:
+            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 2) == 0:
+            # if True:
                 # remove all emojis in `plain`
                 plain = removeEmojis(plain)
 
@@ -742,7 +724,7 @@ class chatbotManager:
                     plain = self.getSession(
                         sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
 
-                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 1) == 0:
+                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 2) == 0:
                         # remove all emojis in `plain`
                         plain = removeEmojis(plain)
 

@@ -148,7 +148,7 @@ def chatEstablish():
         data = flask.request.get_json()
         charName = data['charName']
         beginMsg = data['msgChain']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     session = chatbotManager.createSession(charName)
@@ -172,7 +172,7 @@ def chatMessage():
         data = flask.request.get_json()
         session = data['session']
         msgChain = data['msgChain']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     if len(msgChain) == 1 and msgChain[0].strip() == '':
@@ -214,7 +214,7 @@ def chatTerminate():
     try:
         data = flask.request.get_json()
         session = data['session']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     chatbotManager.terminateSession(session)
@@ -286,7 +286,7 @@ def charInfo(id):
             return {'data': 'character not exist', 'status': False}
 
         return {'data': d, 'status': True}
-    except ValueError:
+    except ValueError as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
 
@@ -325,7 +325,7 @@ def charEdit(id):
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
         useTTSService = data['useTTSService']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.updateCharacter(
@@ -360,7 +360,7 @@ def charNew():
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
         useTTSService = data['useTTSService']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.createCharacter(
@@ -587,7 +587,7 @@ def stickerList():
     setId = 0
     try:
         setId = flask.request.json['setId']
-    except:
+    except Exception as e:
         return {'status': False, 'data': f'invalid form: {str(e)}'}
 
     return {
@@ -793,7 +793,7 @@ def updateUsername():
     try:
         data = flask.request.get_json()
         userName = data['userName']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.updateUsername(userName)
@@ -810,7 +810,7 @@ def updatePassword():
     try:
         data = flask.request.get_json()
         password = data['password']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.updatePassword(password)
@@ -828,7 +828,7 @@ def initialize():
         data = flask.request.get_json()
         userName = data['userName']
         password = data['password']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.initialize(userName, password)
@@ -847,7 +847,7 @@ def establishRealTimeVoiceChat():
     try:
         data = flask.request.get_json()
         charName = data['charName']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     sessionName = chatbotManager.checkIfRtSessionExist(charName)
@@ -903,7 +903,7 @@ def terminateRealTimeVoiceChat():
     try:
         data = flask.request.get_json()
         sessionName = data['session']
-    except:
+    except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     try:

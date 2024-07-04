@@ -921,7 +921,7 @@ class DataProvider:
         """
 
         self.db.query("update GPTSoVitsServices set name = ?, url = ?, description = ?, ttsInferYamlPath = ? where id = ?",
-                      (name, url, description, serviceId, ttsInferYamlPath))
+                      (name, url, description, ttsInferYamlPath, serviceId))
 
     def getAvailableTTSReferenceAudio(self, serviceId: int) -> list[str]:
         """
@@ -962,6 +962,7 @@ class DataProvider:
 
                 # force to retrieve json response
                 s = s[s.find('['): s.rfind(']')+1]
+                logger.Logger.log(s)
                 s = json.loads(s)
 
                 for i in s:
@@ -1009,7 +1010,7 @@ class DataProvider:
         """
 
         serviceInfo = self.getGPTSoVitsService(serviceId)
-        GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'])
+        GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'], serviceInfo['ttsInferYamlPath'])
         logger.Logger.log(response)
 
         r = self.convertModelResponseToTTSInput(
@@ -1022,8 +1023,11 @@ class DataProvider:
             if refAudio is None:
                 raise exceptions.ReferenceAudioNotFound(
                     f'Could not find reference audio for emotion {i["emotion"]}')
-            attachment = self.saveAudioAttachment(GPTSoVitsEndpoint.tts(
-                refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw.read(), 'audio/wav')
+                
+            resp = GPTSoVitsEndpoint.tts(
+                refAudio['path'], refAudio['text'], i['text'], refAudio['language'])
+            logger.Logger.log(resp.ok, resp.status_code)
+            attachment = self.saveAudioAttachment(resp.content, 'audio/aac')
             result.append({
                 'type': ChatHistoryType.AUDIO,
                 'role': 'model',
