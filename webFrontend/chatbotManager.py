@@ -684,7 +684,12 @@ class chatbotManager:
             # if True:
                 # remove all emojis in `plain`
                 plain = removeEmojis(plain)
-
+                for i in self.getSession(sessionName).getAvailableStickers():
+                    # fuck unicode parentheses
+                    plain = plain.replace(f'（{i}）', f'({i})')
+                    # I hate gemini-1.0
+                    plain = plain.replace(f':{i}:', f'({i})')
+                
                 result = self.dataProvider.convertModelResponseToAudio(
                     self.getSession(
                         sessionName).memory.getCharTTSServiceId(),
@@ -727,6 +732,11 @@ class chatbotManager:
                     if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 2) == 0:
                         # remove all emojis in `plain`
                         plain = removeEmojis(plain)
+                        for i in self.getSession(sessionName).getAvailableStickers():
+                            # fuck unicode parentheses
+                            plain = plain.replace(f'（{i}）', f'({i})')
+                            # I hate gemini-1.0
+                            plain = plain.replace(f':{i}:', f'({i})')
 
                         result = self.dataProvider.convertModelResponseToAudio(
                             self.getSession(

@@ -825,7 +825,7 @@ class DataProvider:
             ttsInferYamlPath (str): Path to the TTS inference YAML file.
         """
 
-        self.db.query("insert into GPTSoVitsServices (name, url, description, GPTWeightsPath, SoVitsWeightsPath) values (?,?,?,?,?)",
+        self.db.query("insert into GPTSoVitsServices (name, url, description, ttsInferYamlPath) values (?,?,?,?)",
                       (name, url, description, ttsInferYamlPath))
 
     def addGPTSoVitsReferenceAudio(self, serviceId: int, name: str, text: str, path: str, language: str) -> None:
@@ -1008,8 +1008,8 @@ class DataProvider:
         Returns:
             list[dict[str, str]]: Audio.
         """
-
         serviceInfo = self.getGPTSoVitsService(serviceId)
+        logger.Logger.log(serviceInfo)
         GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'], serviceInfo['ttsInferYamlPath'])
         logger.Logger.log(response)
 
