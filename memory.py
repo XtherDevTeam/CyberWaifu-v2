@@ -75,7 +75,8 @@ class Memory:
                 'datePrompt': tools.TimeProvider(),
                 'charPrompt': self.getCharPrompt(),
                 'memoryPrompt': self.getPastMemories(),
-                'exampleChats': self.getExampleChats()
+                'exampleChats': self.getExampleChats(),
+                'availableEmotions': ', '.join(self.dataProvider.getAvailableTTSReferenceAudio(self.getCharTTSServiceId()))
             })
         else:
             availableStickers = ''

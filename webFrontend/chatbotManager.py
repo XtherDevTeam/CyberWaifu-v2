@@ -87,8 +87,8 @@ class VoiceChatSession:
         self.ttsServiceId = self.bot.memory.getCharTTSServiceId()
         self.ttsService = self.dataProvider.getGPTSoVitsService(
             self.ttsServiceId)
-        self.GPTSoVITsAPI = GPTSoVitsAPI(self.ttsService['url'], isTTSv3=True, ttsInferYamlPath=self.ttsService['ttsInferYamlPath'])
-        self.vadModel = webrtcvad.Vad(3)
+        self.GPTSoVITsAPI = GPTSoVitsAPI(
+            self.ttsService['url'], isTTSv3=True, ttsInferYamlPath=self.ttsService['ttsInferYamlPath'])
         self.chat_lock = threading.Lock()
         self.message_queue: list[glm.File] = []
         self.terminateSessionCallback = None
@@ -108,6 +108,25 @@ class VoiceChatSession:
         new_loop = asyncio.new_event_loop()
         new_loop.run_until_complete(self.broadcastAudioLoop(audioSource))
 
+    def convertModelResponseToTTSInput(self, parsedResponse: dict[str, str | int | bool]) -> list[dict[str, str | int | bool]]:
+        """
+        A method specifially for VoiceChat prompt.
+        Convert the parsed response from the chatbot to TTS input.
+
+        Args:
+            parsedResponse (dict[str, str | int | bool]): parsed response from the chatbot
+
+        Returns:
+            list[dict[str, str | int | bool]]: list of TTS input
+        """
+        for i in parsedResponse:
+            emotion = i['text'][0:i['text'].find(':')]
+            text = i['text'][i['text'].find(':')+1:]
+            i['emotion'] = emotion
+            i['text'] = text
+
+        return parsedResponse
+
     def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> None:
         """
         Invoke GPT-SoVITs TTS service to generate audio file for the parsed response.
@@ -121,15 +140,16 @@ class VoiceChatSession:
         Returns:
             None
         """
-        r = self.dataProvider.convertModelResponseToTTSInput(
-            parsedResponse, self.ttsService['reference_audios'])
-        
+        r = self.convertModelResponseToTTSInput(parsedResponse)
+
         for i in r:
             refAudio = self.dataProvider.getReferenceAudioByName(
                 self.ttsServiceId, i['emotion'])
             if refAudio is None:
-                raise exceptions.ReferenceAudioNotFound(
-                    f"Reference audio for emotion {i['emotion']} not found")
+                logger.Logger.log(f"Reference audio for emotion {
+                                  i['emotion']} not found")
+                # do not raise exception here, cuz we don't want to stop the session.
+                return
             self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.tts(
                 refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw))
 
@@ -161,12 +181,12 @@ class VoiceChatSession:
             else:
                 resp = self.bot.llm.initiate(self.message_queue)
                 self.bot.inChatting = True
-            
+
             if 'OPT_GetUserMedia' in resp:
                 resp = self.bot.llm.chat([self.getUserMedia()])
-                
-            self.ttsInvocation(self.dataProvider.parseModelResponse(resp))    
-                
+
+            self.ttsInvocation(self.dataProvider.parseModelResponse(resp))
+
             self.message_queue = []
 
     async def VAD(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
@@ -192,19 +212,18 @@ class VoiceChatSession:
         if ext is None:
             raise exceptions.UnsupportedMimeType(
                 f"Unsupported audio mime type: {mimeType}")
-        
+
         frames = 0
         last_sec = time.time()
         last_sec_frames = 0
-        last_frame : list[livekit.rtc.AudioFrame] = []
+        last_frame: list[livekit.rtc.AudioFrame] = []
         async for frame in stream:
             if not self.connected:
                 break
-            
+
             last_sec_frames += 1
             frames += 1
-        
-            
+
             if time.time() - last_sec > 1:
                 last_sec = time.time()
                 logger.Logger.log(f"last second: {last_sec_frames} frames")
@@ -216,7 +235,7 @@ class VoiceChatSession:
             # filtered_data = frame.frame.data
             # logger.Logger.log(len(frame.frame.data.tobytes()), len(
                 # audio_data.tobytes()), len(filtered_data.tobytes()))
-                
+
             if frames % 4 == 0:
                 # logger.Logger.log('40ms refresh')
                 pass
@@ -225,26 +244,27 @@ class VoiceChatSession:
                 last_frame.append(frame.frame)
                 # logger.Logger.log('refreshing buffer', last_frame)
                 continue
-                
+
             rb = b''
             for i in last_frame:
                 rb += i.data.tobytes()
             rb += frame.frame.data.tobytes()
             last_frame = []
-                
+
             numpy_data = numpy.frombuffer(rb, dtype=numpy.int16)
-            
+
             # filtered_data = self.signal_filter(y=numpy_data)
-                
+
             byteFrame = numpy_data.astype(numpy.int16).tobytes()
             # wholeFrame = livekit.rtc.AudioFrame(
-                # data=byteFrame, sample_rate=frame.frame.sample_rate, samples_per_channel=frame.frame.samples_per_channel, num_channels=frame.frame.num_channels)
+            # data=byteFrame, sample_rate=frame.frame.sample_rate, samples_per_channel=frame.frame.samples_per_channel, num_channels=frame.frame.num_channels)
             # logger.Logger.log(f"frame len: {len(wholeFrame.data)}")
 
-            isSpeech = SileroVAD.SileroVAD.predict(numpy_data, frame.frame.sample_rate)
+            isSpeech = SileroVAD.SileroVAD.predict(
+                numpy_data, frame.frame.sample_rate)
             # logger.Logger.log(f"is speech: {isSpeech}")
             isSpeech = isSpeech > 0.7
-            
+
             if not triggered:
                 ring_buffer.append((byteFrame, isSpeech))
                 num_voiced = len([f for f, speech in ring_buffer if speech])
@@ -416,7 +436,7 @@ class VoiceChatSession:
         if self.broadcastMissions.empty():
             self.currentBroadcastMission = None
             # self.currentBroadcastMission = av.open(
-                # "./temp/wdnmd.wav", "r")
+            # "./temp/wdnmd.wav", "r")
         else:
             self.currentBroadcastMission = self.broadcastMissions.get()
             # pass
@@ -454,7 +474,8 @@ class VoiceChatSession:
                     except Exception as e:
                         raise e
                         # if there's problem with the frame, skip it and continue to the next one.
-                        logger.Logger.log('Error processing frame, skipping it.')
+                        logger.Logger.log(
+                            'Error processing frame, skipping it.')
                         continue
                     # while time.time() < future:
                     await source.capture_frame(livekitFrame)
@@ -568,7 +589,7 @@ class chatbotManager:
         for i in self.rtPool:
             if self.rtPool[i]['charName'] == charName:
                 return i
-        
+
         return None
 
     def createRtSession(self, charName: str, sessionName: str, voiceSession: VoiceChatSession) -> str:
@@ -610,7 +631,7 @@ class chatbotManager:
             if doRenew:
                 self.pool[sessionName]['expireTime'] = time.time() + 60 * 5
                 logger.Logger.log('Session renewed: ',
-                      self.pool[sessionName]['expireTime'])
+                                  self.pool[sessionName]['expireTime'])
             return r
         else:
             raise exceptions.SessionNotFound(
@@ -681,7 +702,7 @@ class chatbotManager:
             logger.Logger.log('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(
                 sessionName).memory.getCharTTSServiceId() != 0) else 'False')
             if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 2) == 0:
-            # if True:
+                # if True:
                 # remove all emojis in `plain`
                 plain = removeEmojis(plain)
                 for i in self.getSession(sessionName).getAvailableStickers():
@@ -689,7 +710,7 @@ class chatbotManager:
                     plain = plain.replace(f'（{i}）', f'({i})')
                     # I hate gemini-1.0
                     plain = plain.replace(f':{i}:', f'({i})')
-                
+
                 result = self.dataProvider.convertModelResponseToAudio(
                     self.getSession(
                         sessionName).memory.getCharTTSServiceId(),
