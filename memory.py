@@ -76,7 +76,8 @@ class Memory:
                 'charPrompt': self.getCharPrompt(),
                 'memoryPrompt': self.getPastMemories(),
                 'exampleChats': self.getExampleChats(),
-                'availableEmotions': ', '.join(self.dataProvider.getAvailableTTSReferenceAudio(self.getCharTTSServiceId()))
+                'availableEmotions': ', '.join(self.dataProvider.getAvailableTTSReferenceAudio(self.getCharTTSServiceId())),
+                'userPersona': self.dataProvider.getUserPersona()
             })
         else:
             availableStickers = ''
@@ -90,5 +91,6 @@ class Memory:
                 'charPrompt': self.getCharPrompt(),
                 'memoryPrompt': self.getPastMemories(),
                 'exampleChats': self.getExampleChats(),
-                'availableStickers': availableStickers
+                'availableStickers': availableStickers,
+                'userPersona': self.dataProvider.getUserPersona()
             })

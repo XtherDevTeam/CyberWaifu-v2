@@ -300,6 +300,29 @@ class DataProvider:
             return None
         else:
             return f['userName']
+        
+    def getUserPersona(self) -> None | str:
+        """
+        Get the persona of the user from the database.
+
+        Returns:
+            None | str: Persona if exists, None otherwise.
+        """
+        f = self.db.query('select persona from config', one=True)
+        if f is None:
+            return None
+        else:
+            return f['persona']
+
+    def updateUserPersona(self, persona: str) -> None:
+        """
+        Update the persona of the user in the database.
+
+        Args:
+            persona (str): New persona.
+        """
+        self.db.query('update config set persona = ?', (persona, ))
+
 
     def authenticate(self, pwd: str) -> None | bool:
         """

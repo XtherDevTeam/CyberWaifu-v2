@@ -7,7 +7,8 @@ create table config (
     userName        string DEFAULT 'Jerry Chou',
     passwordSalted  string NOT NULL,
     avatar          blob NOT NULL,
-    avatarMime      string NOT NULL
+    avatarMime      string NOT NULL,
+    persona         string NOT NULL default 'A high-school student, who loves playing video games and watching anime.'
 );
 
 create table stickerSets (

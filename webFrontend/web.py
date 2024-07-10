@@ -102,7 +102,8 @@ def serviceInfo():
             'image_model': config.USE_MODEL_IMAGE_PARSING,
             'chat_model': config.USE_MODEL,
             'authenticated_session': authenticateSession(),
-            'session_username': dProvider.getUserName()
+            'session_username': dProvider.getUserName(),
+            'user_persona': dProvider.getUserPersona(),
         },
         'status': True
     }
@@ -798,6 +799,24 @@ def updateUsername():
 
     dProvider.updateUsername(userName)
     return {'data': 'success', 'status': True}
+
+
+@app.route("/api/v1/update_persona", methods=["POST"])
+def updatePersona():
+    if not authenticateSession():
+        return {'data': 'not authenticated', ' status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', ' status': False}
+
+    try:
+        data = flask.request.get_json()
+        persona = data['persona']
+    except Exception as e:
+        return {'data': f'invalid form: {str(e)}', 'status': False}
+
+    dProvider.updateUserPersona(persona)
+    return {'data': 'success', 'status': True}
+
 
 
 @app.route("/api/v1/update_password", methods=["POST"])

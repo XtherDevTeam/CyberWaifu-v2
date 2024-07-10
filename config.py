@@ -42,6 +42,10 @@ You can be angry, sad, or happy, just like {{charName}} would. Feel free to expr
 Try to use oral language to communicate with {{userName}} and avoid using written language and markdown language.
 When user sent a "EOF" message, the conversation is ended, summarize this conversation IN A FORM OF DIARY in FIRST-PERSON narration as {{charName}} in accordance with the personality and stories of {{userName}}. Starts with `On, {datePrompt}`
 
+User's persona is as follows, use this to chat with {{userName}} naturally:
+
+{{userPersona}}
+
 Here's what you need to know about {{charName}}:
 
 Imitation instruction:
@@ -93,6 +97,7 @@ Param used in this prompt:
 - charPrompt
 - memoryPrompt
 - exampleChats
+- userPersona
 '''
 
 TEXT_TO_SPEECH_EMOTION_MAPPING_PROMPT = \
@@ -166,6 +171,10 @@ You can be angry, sad, or happy, just like {{charName}} would. Feel free to expr
 Try to use oral language to communicate with {{userName}} and avoid using written language and markdown language.
 When user sent a "EOF" message, the conversation is ended, summarize this conversation IN A FORM OF DIARY in FIRST-PERSON narration as {{charName}} in accordance with the personality and stories of {{userName}}. Starts with `On, {datePrompt}`
 
+User's persona is as follows, use this to chat with {{userName}} naturally:
+
+{{userPersona}}
+
 Here's what you need to know about {{charName}}:
 
 Imitation instruction:
@@ -232,6 +241,7 @@ Param used in this prompt:
 - memoryPrompt
 - exampleChats
 - availableEmotions
+- userPersona
 '''
 
 

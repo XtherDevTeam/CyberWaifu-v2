@@ -150,8 +150,8 @@ class VoiceChatSession:
                                   i['emotion']} not found")
                 # do not raise exception here, cuz we don't want to stop the session.
                 return
-            self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.tts(
-                refAudio['path'], refAudio['text'], i['text'], refAudio['language']).raw))
+            self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.build_tts_v3_request(
+                refAudio['path'], refAudio['text'], i['text'], refAudio['language'])))
 
     async def chat(self, audios: list[glm.File]) -> None:
         """
@@ -183,6 +183,7 @@ class VoiceChatSession:
                 self.bot.inChatting = True
 
             if 'OPT_GetUserMedia' in resp:
+                logger.Logger.log('getting user media')
                 resp = self.bot.llm.chat([self.getUserMedia()])
 
             self.ttsInvocation(self.dataProvider.parseModelResponse(resp))
