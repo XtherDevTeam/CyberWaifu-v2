@@ -13,16 +13,9 @@ import wave
 
 import av
 import cv2
-from librosa import resample
 import livekit.api
 import livekit.rtc
-from mirai import Voice
-from more_itertools import last
-from numpy import byte, char
 import numpy
-from pyparsing import Opt
-import requests
-import noisereduce
 # import sympy
 from GPTSoVits import GPTSoVitsAPI
 import SileroVAD
@@ -37,9 +30,7 @@ import random
 import livekit
 import google.ai.generativelanguage as glm
 import webFrontend.config
-import webrtcvad
 import google.generativeai
-import chatModel
 
 from models import EmojiToStickerInstrctionModel, TokenCounter
 
@@ -185,8 +176,18 @@ class VoiceChatSession:
             if 'OPT_GetUserMedia' in resp:
                 logger.Logger.log('getting user media')
                 resp = self.bot.llm.chat([self.getUserMedia()])
+                
+            resp = removeEmojis(resp)
+            for i in self.bot.getAvailableStickers():
+                # fuck unicode parentheses
+                resp = resp.replace(f'({i})', f'')
+                resp = resp.replace(f'（{i}）', f'')
+                # I hate gemini-1.0
+                resp = resp.replace(f':{i}:', f'')
+                
+            logger.Logger.log(f"chat response: {resp}")
 
-            self.ttsInvocation(self.dataProvider.parseModelResponse(resp))
+            self.ttsInvocation(self.dataProvider.parseModelResponse(resp, isRTVC=True))
 
             self.message_queue = []
 
@@ -460,7 +461,6 @@ class VoiceChatSession:
                     # logger.Logger.log(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
                     # frame.layout.channels), [i for i in frame.side_data.keys()])
                     try:
-                        # sizeof(int16) =
                         # logger.Logger.log out attrs of livekitFrame when initializing it.
                         # logger.Logger.log(frame.samples * 2, len(frame.to_ndarray().astype(numpy.int16).tobytes()))
                         resampledFrame = av.AudioResampler(
@@ -473,14 +473,11 @@ class VoiceChatSession:
                             samples_per_channel=resampledFrame.samples // len(resampledFrame.layout.channels),)
                         # logger.Logger.log(livekitFrame.sample_rate, livekitFrame.num_channels, livekitFrame.samples_per_channel, len(livekitFrame.data))
                     except Exception as e:
-                        raise e
                         # if there's problem with the frame, skip it and continue to the next one.
                         logger.Logger.log(
                             'Error processing frame, skipping it.')
                         continue
-                    # while time.time() < future:
                     await source.capture_frame(livekitFrame)
-                    # await asyncio.sleep(0.0001)
 
     def getUserMedia(self) -> glm.File:
         """

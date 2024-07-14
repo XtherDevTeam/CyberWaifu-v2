@@ -300,7 +300,7 @@ class DataProvider:
             return None
         else:
             return f['userName']
-        
+
     def getUserPersona(self) -> None | str:
         """
         Get the persona of the user from the database.
@@ -322,7 +322,6 @@ class DataProvider:
             persona (str): New persona.
         """
         self.db.query('update config set persona = ?', (persona, ))
-
 
     def authenticate(self, pwd: str) -> None | bool:
         """
@@ -505,18 +504,19 @@ class DataProvider:
 
         return r
 
-    def parseModelResponse(self, plain: str) -> list[dict[str | int]]:
+    def parseModelResponse(self, plain: str, isRTVC: bool = False) -> list[dict[str | int]]:
         """
         Parses a model response and returns a list of formatted messages.
 
         Args:
             plain (str): Plain model response.
+            isRTVC (bool): Whether the response is from an real-time voice chat or not.
 
         Returns:
             list[dict[str | int]]: List of formatted messages.
         """
 
-        l: list[str] = plain.strip().split('---')
+        l: list[str] = [plain.strip()] if isRTVC else plain.strip().split('---')
         r: list[dict[str | int]] = []
         for i in l:
             i = i.strip()
@@ -926,7 +926,7 @@ class DataProvider:
 
         self.db.query(
             "delete from GPTSoVitsServices where id = ?", (serviceId, ))
-        
+
         # bugfix: delete reference audios
         self.db.query(
             "delete from GPTSoVitsReferenceAudios where serviceId = ?", (serviceId, ))
@@ -1033,7 +1033,8 @@ class DataProvider:
         """
         serviceInfo = self.getGPTSoVitsService(serviceId)
         logger.Logger.log(serviceInfo)
-        GPTSoVitsEndpoint = GPTSoVitsAPI(serviceInfo['url'], serviceInfo['ttsInferYamlPath'])
+        GPTSoVitsEndpoint = GPTSoVitsAPI(
+            serviceInfo['url'], serviceInfo['ttsInferYamlPath'])
         logger.Logger.log(response)
 
         r = self.convertModelResponseToTTSInput(
@@ -1046,7 +1047,7 @@ class DataProvider:
             if refAudio is None:
                 raise exceptions.ReferenceAudioNotFound(
                     f'Could not find reference audio for emotion {i["emotion"]}')
-                
+
             resp = GPTSoVitsEndpoint.tts(
                 refAudio['path'], refAudio['text'], i['text'], refAudio['language'])
             logger.Logger.log(resp.ok, resp.status_code)
