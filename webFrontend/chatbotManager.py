@@ -5,6 +5,7 @@ import io
 import mimetypes
 from os import remove
 import os
+import pathlib
 import queue
 import re
 import threading
@@ -144,12 +145,21 @@ class VoiceChatSession:
             self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.build_tts_v3_request(
                 refAudio['path'], refAudio['text'], i['text'], refAudio['language'])))
 
-    async def chat(self, audios: list[glm.File]) -> None:
+    def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
+        res = [{
+            'mime_type': 'audio/wav',
+            'data': pathlib.Path(message).read_bytes()
+        } for message in messageQueue]
+        for i in messageQueue:
+            os.remove(i)
+        return res
+
+    async def chat(self, audios: list[str]) -> None:
         """
         Send audio files to chatbot and retrive response as broadcast missions.
 
         Args:
-            audios (list[glm.File]): list of audio files
+            audios (list[str]): list of audio file paths
 
         Returns:
             None
@@ -165,31 +175,35 @@ class VoiceChatSession:
             if len(self.message_queue) != curLen:
                 # new message arrived, skip this round
                 return
-            resp = []
-            # not to use self.bot.chat here cuz we've already uploaded the files.
-            if self.bot.inChatting:
-                resp = self.bot.llm.chat(self.message_queue)
-            else:
-                resp = self.bot.llm.initiate(self.message_queue)
-                self.bot.inChatting = True
-
-            if 'OPT_GetUserMedia' in resp:
-                logger.Logger.log('getting user media')
-                resp = self.bot.llm.chat([self.getUserMedia()])
+            
+            with self.chat_lock:
+                self.message_queue = self.messageQueuePreProcessing(self.message_queue)
                 
-            resp = removeEmojis(resp)
-            for i in self.bot.getAvailableStickers():
-                # fuck unicode parentheses
-                resp = resp.replace(f'({i})', f'')
-                resp = resp.replace(f'（{i}）', f'')
-                # I hate gemini-1.0
-                resp = resp.replace(f':{i}:', f'')
-                
-            logger.Logger.log(f"chat response: {resp}")
+                resp = []
+                # not to use self.bot.chat here cuz we've already uploaded the files.
+                if self.bot.inChatting:
+                    resp = self.bot.llm.chat(self.message_queue)
+                else:
+                    resp = self.bot.llm.initiate(self.message_queue)
+                    self.bot.inChatting = True
 
-            self.ttsInvocation(self.dataProvider.parseModelResponse(resp, isRTVC=True))
+                if 'OPT_GetUserMedia' in resp:
+                    logger.Logger.log('getting user media')
+                    resp = self.bot.llm.chat([self.getUserMedia()])
+                    
+                resp = removeEmojis(resp)
+                for i in self.bot.getAvailableStickers():
+                    # fuck unicode parentheses
+                    resp = resp.replace(f'({i})', f'')
+                    resp = resp.replace(f'（{i}）', f'')
+                    # I hate gemini-1.0
+                    resp = resp.replace(f':{i}:', f'')
+                    
+                logger.Logger.log(f"chat response: {resp}")
 
-            self.message_queue = []
+                self.ttsInvocation(self.dataProvider.parseModelResponse(resp, isRTVC=True))
+
+                self.message_queue = []
 
     async def VAD(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
@@ -297,17 +311,12 @@ class VoiceChatSession:
 
                         write_wave(temp, b)
 
-                        logger.Logger.log(f"uploading {temp}")
-                        glmFile = google.generativeai.upload_file(temp)
-                        # self.broadcastMissions.put(av.open(temp))
-                        os.remove(temp)
-                        return glmFile
-                        # return 1
-                        # return temp
+                        logger.Logger.log(f"saved as {temp}")
+                        return temp
 
                     async def proc_wrapper(proc_bs: list[bytes]):
                         files = [proc(b) for b in proc_bs]
-                        logger.Logger.log(f'uploaded audios: {files}')
+                        logger.Logger.log(f'total: {files}')
                         await self.chat(files)
 
                     def thread_wrapper(bs: list[bytes]):
@@ -499,14 +508,10 @@ class VoiceChatSession:
             4
         )
         encoded, buffer = cv2.imencode('.jpg', img_np)
-        temp = self.dataProvider.tempFilePathProvider('jpg')
-        with open(temp, 'wb') as f:
-            f.write(buffer)
-
-        glmFile = google.generativeai.upload_file(temp)
-        logger.Logger.log(f"uploading {temp}", glmFile)
-        os.remove(temp)
-        return glmFile
+        return {
+            'mime_type': 'image/jpeg',
+            'data': buffer.tobytes()
+        }
 
     def terminateSession(self) -> None:
         """
