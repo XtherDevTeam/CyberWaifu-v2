@@ -171,7 +171,7 @@ class VoiceChatSession:
             pass
         else:
             curLen = len(self.message_queue)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.75)
             if len(self.message_queue) != curLen:
                 # new message arrived, skip this round
                 return
@@ -190,14 +190,18 @@ class VoiceChatSession:
                 if 'OPT_GetUserMedia' in resp:
                     logger.Logger.log('getting user media')
                     resp = self.bot.llm.chat([self.getUserMedia()])
-                    
+                
                 resp = removeEmojis(resp)
+                # use |<spliter>| to split setences
                 for i in self.bot.getAvailableStickers():
                     # fuck unicode parentheses
-                    resp = resp.replace(f'({i})', f'')
-                    resp = resp.replace(f'（{i}）', f'')
+                    resp = resp.replace(f'({i})', '|<spliter>|')
+                    resp = resp.replace(f'（{i}）', '|<spliter>|')
                     # I hate gemini-1.0
-                    resp = resp.replace(f':{i}:', f'')
+                    resp = resp.replace(f':{i}:', '|<spliter>|')
+                    
+                # capture whitespace more than 2 times in a row
+                resp = re.sub(r'\s{2,}', '|<spliter>|', resp)
                     
                 logger.Logger.log(f"chat response: {resp}")
 
@@ -221,7 +225,7 @@ class VoiceChatSession:
         voiced_frames: list[bytes] = []
         bs = []
         # i don't even know whether it's a good idea to use 648 as the maxlen.
-        maxlen = 60
+        maxlen = 30
         triggered = False
         ext = mimetypes.guess_extension(mimeType)
         logger.Logger.log('using audio extension:', ext)

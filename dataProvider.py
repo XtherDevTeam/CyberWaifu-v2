@@ -516,7 +516,15 @@ class DataProvider:
             list[dict[str | int]]: List of formatted messages.
         """
 
-        l: list[str] = [plain.strip()] if isRTVC else plain.strip().split('---')
+        l: list[str] = [i.strip() for i in plain.strip().split('|<spliter>|')] if isRTVC else [
+            i.strip() for i in plain.strip().split('---')]
+        
+        # workaround for splitter
+        emotion = None
+        if isRTVC:
+            emotion = l[0][:l[0].find(':')]
+            l[0] = l[0][l[0].find(':')+1:]
+        
         r: list[dict[str | int]] = []
         for i in l:
             i = i.strip()
@@ -525,7 +533,7 @@ class DataProvider:
 
             r.append({
                 'type': ChatHistoryType.TEXT,
-                'text': i,
+                'text': f'{emotion if emotion is not None else ""}:{i}',
                 'timestamp': int(time.time()),
                 'role': 'model'
             })
