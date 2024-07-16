@@ -146,10 +146,21 @@ class VoiceChatSession:
                 refAudio['path'], refAudio['text'], i['text'], refAudio['language'])))
 
     def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
+        """
+        Pre-process the message queue to convert audio files to inline data and remove them from the queue.
+
+        Args:
+            messageQueue (list[str]): list of audio file paths
+
+        Returns:
+            list[dict[str, str]]: list of inline data objects
+        """
+        
+        # just in case of which gets a list of processed queue instead of file paths
         res = [{
             'mime_type': 'audio/wav',
             'data': pathlib.Path(message).read_bytes()
-        } for message in messageQueue]
+        } if type(message) is str else message for message in messageQueue]
         for i in messageQueue:
             os.remove(i)
         return res
@@ -178,6 +189,7 @@ class VoiceChatSession:
             
             with self.chat_lock:
                 self.message_queue = self.messageQueuePreProcessing(self.message_queue)
+                self.message_queue.append(self.getUserMedia())
                 
                 resp = []
                 # not to use self.bot.chat here cuz we've already uploaded the files.
@@ -186,10 +198,6 @@ class VoiceChatSession:
                 else:
                     resp = self.bot.llm.initiate(self.message_queue)
                     self.bot.inChatting = True
-
-                if 'OPT_GetUserMedia' in resp:
-                    logger.Logger.log('getting user media')
-                    resp = self.bot.llm.chat([self.getUserMedia()])
                 
                 resp = removeEmojis(resp)
                 # use |<spliter>| to split setences
@@ -511,7 +519,21 @@ class VoiceChatSession:
             self.currentImageFrame.width,
             4
         )
+        
+        # resize the image so as to save the token
+        scaler = self.currentImageFrame.width / 1280
+        new_width, new_height = (int(self.currentImageFrame.width // scaler), int(self.currentImageFrame.height // scaler))
+        cv2.resize(img_np, (new_width, new_height))
+        
         encoded, buffer = cv2.imencode('.jpg', img_np)
+        
+        """
+        temp = self.dataProvider.tempFilePathProvider('jpg')
+        with open(temp, 'wb') as f:
+            f.write(buffer.tobytes())
+        logger.Logger.log(f"saved as {temp}")
+        """
+        
         return {
             'mime_type': 'image/jpeg',
             'data': buffer.tobytes()
