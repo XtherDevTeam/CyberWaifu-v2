@@ -28,6 +28,8 @@ import random
 import livekit
 import google.ai.generativelanguage as glm
 import webFrontend.config
+import io
+import requests
 
 from models import EmojiToStickerInstrctionModel, TokenCounter
 
@@ -36,6 +38,34 @@ import emoji
 
 def removeEmojis(text):
     return emoji.replace_emoji(text, '')
+
+
+class VoiceChatResponse():
+    """
+    A class for storing voice chat response as bytes.
+    """
+
+    def __init__(self, response: requests.models.Response) -> None:
+        self.response = response
+        self.chunked_iter = response.iter_content(chunk_size=4096)
+        self.previous_left = b''
+        
+    def read(self, size: int) -> bytes:
+        try:
+            current = next(self.chunked_iter)
+            actual = self.previous_left + current
+            if len(actual) > size:
+                self.previous_left = actual[size:]
+                return actual[:size]
+            else:
+                self.previous_left = b''
+                return actual
+        except StopIteration:
+            return b''
+
+    def close(self) -> None:
+        self.response.close()
+
 
 
 class VoiceChatSession:
@@ -134,7 +164,8 @@ class VoiceChatSession:
         """
 
         for i in parsedResponse:
-            self.broadcastMissions.put(av.open(self.AIDubMiddlewareAPI.build_dub_request(i['text'], self.ttsUseModel)))
+            # no proxy
+            self.broadcastMissions.put(av.open(VoiceChatResponse(self.AIDubMiddlewareAPI.dub(i['text'], self.ttsUseModel))))
 
     def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
         """
@@ -174,6 +205,7 @@ class VoiceChatSession:
             self.message_queue = self.messageQueuePreProcessing(
                 self.message_queue)
             self.message_queue.append(self.getUserMedia())
+            self.message_queue = ["Voices:"] + self.message_queue
 
             resp = []
             # not to use self.bot.chat here cuz we've already uploaded the files.
