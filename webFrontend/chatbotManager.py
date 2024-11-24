@@ -1,9 +1,6 @@
-from ast import parse
 import asyncio
 import contextlib
-import io
 import mimetypes
-from os import remove
 import os
 import pathlib
 import queue
@@ -17,7 +14,7 @@ import cv2
 import livekit.api
 import livekit.rtc
 import numpy
-# import sympy
+import AIDubMiddlewareAPI
 from GPTSoVits import GPTSoVitsAPI
 import SileroVAD
 import dataProvider
@@ -31,7 +28,6 @@ import random
 import livekit
 import google.ai.generativelanguage as glm
 import webFrontend.config
-import google.generativeai
 
 from models import EmojiToStickerInstrctionModel, TokenCounter
 
@@ -60,7 +56,14 @@ class VoiceChatSession:
         VAD(stream: livekit.rtc.AudioStream) -> None: Voice activity detection.
         receiveVideoStream(stream: livekit.rtc.VideoStream) -> None: Receive video stream from other user.
         start(botToken: str) -> None: Start the hoster of chat session.
-        chatPluginGetUserMedia() -> glm.File: Get image of user's camera or sharing screen. Use it when user want you to know about the content of his camera or screen or your response is related to the content of the camera or screen.
+        join(botToken: str, roomName: str) -> None: Join the participant of chat session.
+        leave() -> None: Leave the chat session.
+        getUserMedia() -> dict[str, str]: Get user media (camera or screen) as inline data.
+        broadcastAudioLoop(audioSource) -> None: Start the loop for broadcasting missions.
+        convertModelResponseToTTSInput(parsedResponse: dict[str, str | int | bool]) -> list[dict[str, str | int | bool]]: Convert the parsed response from the chatbot to TTS input.
+        ttsInvocation(parsedResponse: dict[str, str | int | bool]) -> None: Invoke GPT-SoVITs TTS service to generate audio file for the parsed response.
+        messageQueuePreProcessing(messageQueue: list[str]) -> list[dict[str, str]]: Pre-process the message queue to convert audio files to inline data and remove them from the queue.
+        chat(audios: list[str]) -> None: Send audio files to chatbot and retrive response as broadcast missions.
     """
 
     def __init__(self, sessionName: str, charName: str, dataProvider: dataProvider.DataProvider) -> None:
@@ -76,13 +79,10 @@ class VoiceChatSession:
                                                  str | int | bool]] = queue.Queue()
         self.currentBroadcastMission: Optional[av.InputContainer |
                                                av.OutputContainer] = None
-        self.ttsServiceId = self.bot.memory.getCharTTSServiceId()
-        self.ttsService = self.dataProvider.getGPTSoVitsService(
-            self.ttsServiceId)
-        self.GPTSoVITsAPI = GPTSoVitsAPI(
-            self.ttsService['url'], isTTSv3=True, ttsInferYamlPath=self.ttsService['ttsInferYamlPath'])
+        self.ttsUseModel = self.bot.memory.getCharTTSUseModel()
+        self.AIDubMiddlewareAPI = AIDubMiddlewareAPI.AIDubMiddlewareAPI(self.dataProvider.getGPTSoVITsMiddleware())
         self.chat_lock = threading.Lock()
-        self.message_queue: list[glm.File] = []
+        self.message_queue: list[str] = []
         self.terminateSessionCallback = None
         self.loop: asyncio.AbstractEventLoop = None
         self.broadcastingThread: threading.Thread = None
@@ -132,18 +132,9 @@ class VoiceChatSession:
         Returns:
             None
         """
-        r = self.convertModelResponseToTTSInput(parsedResponse)
 
-        for i in r:
-            refAudio = self.dataProvider.getReferenceAudioByName(
-                self.ttsServiceId, i['emotion'])
-            if refAudio is None:
-                logger.Logger.log(f"Reference audio for emotion {
-                                  i['emotion']} not found")
-                # do not raise exception here, cuz we don't want to stop the session.
-                return
-            self.broadcastMissions.put(av.open(self.GPTSoVITsAPI.build_tts_v3_request(
-                refAudio['path'], refAudio['text'], i['text'], refAudio['language'])))
+        for i in parsedResponse:
+            self.broadcastMissions.put(av.open(self.AIDubMiddlewareAPI.build_dub_request(i['text'], self.ttsUseModel)))
 
     def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
         """
@@ -155,7 +146,7 @@ class VoiceChatSession:
         Returns:
             list[dict[str, str]]: list of inline data objects
         """
-        
+
         # just in case of which gets a list of processed queue instead of file paths
         res = [{
             'mime_type': 'audio/wav',
@@ -177,28 +168,22 @@ class VoiceChatSession:
         """
 
         self.message_queue.extend(audios)
-        if self.chat_lock.locked():
-            logger.Logger.log('wait for next round of sending')
-            pass
-        else:
-            curLen = len(self.message_queue)
-            await asyncio.sleep(0.75)
-            if len(self.message_queue) != curLen:
-                # new message arrived, skip this round
-                return
-            
-            with self.chat_lock:
-                self.message_queue = self.messageQueuePreProcessing(self.message_queue)
-                self.message_queue.append(self.getUserMedia())
-                
-                resp = []
-                # not to use self.bot.chat here cuz we've already uploaded the files.
-                if self.bot.inChatting:
-                    resp = self.bot.llm.chat(self.message_queue)
-                else:
-                    resp = self.bot.llm.initiate(self.message_queue)
-                    self.bot.inChatting = True
-                
+        print('chat invoked', len(self.message_queue))
+        
+        with self.chat_lock:
+            self.message_queue = self.messageQueuePreProcessing(
+                self.message_queue)
+            self.message_queue.append(self.getUserMedia())
+
+            resp = []
+            # not to use self.bot.chat here cuz we've already uploaded the files.
+            if self.bot.inChatting:
+                resp = self.bot.llm.chat(self.message_queue)
+            else:
+                resp = self.bot.llm.initiate(self.message_queue)
+                self.bot.inChatting = True
+
+            if 'OPT_Silent' not in resp:
                 resp = removeEmojis(resp)
                 # use |<spliter>| to split setences
                 for i in self.bot.getAvailableStickers():
@@ -207,20 +192,22 @@ class VoiceChatSession:
                     resp = resp.replace(f'（{i}）', '|<spliter>|')
                     # I hate gemini-1.0
                     resp = resp.replace(f':{i}:', '|<spliter>|')
-                    
+
                 # capture whitespace more than 2 times in a row
                 resp = re.sub(r'\s{2,}', '|<spliter>|', resp)
-                    
+
                 logger.Logger.log(f"chat response: {resp}")
 
-                self.ttsInvocation(self.dataProvider.parseModelResponse(resp, isRTVC=True))
-
-                self.message_queue = []
+                self.ttsInvocation(
+                    self.dataProvider.parseModelResponse(resp, isRTVC=True))
+            else:
+                logger.Logger.log(f"NOT RESPONDING")
+            self.message_queue = []
 
     async def VAD(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
         Voice activity detection.
-        Fetch and identify each audio frame, when activity detected, save to local temporary file and upload as glm.File then send to Gemini model as Input.
+        Fetch and identify each audio frame, when activity detected, save to local temporary file and upload as inline data then send to Gemini model as Input.
 
         Args:
             stream (livekit.rtc.AudioStream): audio stream
@@ -233,7 +220,7 @@ class VoiceChatSession:
         voiced_frames: list[bytes] = []
         bs = []
         # i don't even know whether it's a good idea to use 648 as the maxlen.
-        maxlen = 30
+        maxlen = 45
         triggered = False
         ext = mimetypes.guess_extension(mimeType)
         logger.Logger.log('using audio extension:', ext)
@@ -247,6 +234,7 @@ class VoiceChatSession:
         last_frame: list[livekit.rtc.AudioFrame] = []
         async for frame in stream:
             if not self.connected:
+                logger.Logger.log('Session terminated, stopping VAD loop')
                 break
 
             last_sec_frames += 1
@@ -281,16 +269,10 @@ class VoiceChatSession:
 
             numpy_data = numpy.frombuffer(rb, dtype=numpy.int16)
 
-            # filtered_data = self.signal_filter(y=numpy_data)
-
             byteFrame = numpy_data.astype(numpy.int16).tobytes()
-            # wholeFrame = livekit.rtc.AudioFrame(
-            # data=byteFrame, sample_rate=frame.frame.sample_rate, samples_per_channel=frame.frame.samples_per_channel, num_channels=frame.frame.num_channels)
-            # logger.Logger.log(f"frame len: {len(wholeFrame.data)}")
 
             isSpeech = SileroVAD.SileroVAD.predict(
                 numpy_data, frame.frame.sample_rate)
-            # logger.Logger.log(f"is speech: {isSpeech}")
             isSpeech = isSpeech > 0.7
 
             if not triggered:
@@ -500,12 +482,12 @@ class VoiceChatSession:
                         continue
                     await source.capture_frame(livekitFrame)
 
-    def getUserMedia(self) -> glm.File:
+    def getUserMedia(self) -> dict[str, bytes | str]:
         """
         Get image of user's camera or sharing screen.
 
         Returns:
-            glm.File: Image file of user's camera or sharing screen.
+            dict[str, bytes | str]: Image file of user's camera or sharing screen.
         """
 
         if self.currentImageFrame is None:
@@ -519,21 +501,22 @@ class VoiceChatSession:
             self.currentImageFrame.width,
             4
         )
-        
+
         # resize the image so as to save the token
         scaler = self.currentImageFrame.width / 1280
-        new_width, new_height = (int(self.currentImageFrame.width // scaler), int(self.currentImageFrame.height // scaler))
+        new_width, new_height = (int(
+            self.currentImageFrame.width // scaler), int(self.currentImageFrame.height // scaler))
         cv2.resize(img_np, (new_width, new_height))
-        
+
         encoded, buffer = cv2.imencode('.jpg', img_np)
-        
+
         """
         temp = self.dataProvider.tempFilePathProvider('jpg')
         with open(temp, 'wb') as f:
             f.write(buffer.tobytes())
         logger.Logger.log(f"saved as {temp}")
         """
-        
+
         return {
             'mime_type': 'image/jpeg',
             'data': buffer.tobytes()
@@ -729,8 +712,8 @@ class chatbotManager:
             result = []
 
             logger.Logger.log('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(
-                sessionName).memory.getCharTTSServiceId() != 0) else 'False')
-            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 2) == 0:
+                sessionName).memory.getCharTTSUseModel() != None) else 'False')
+            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSUseModel() != "None":
                 # if True:
                 # remove all emojis in `plain`
                 plain = removeEmojis(plain)
@@ -740,9 +723,9 @@ class chatbotManager:
                     # I hate gemini-1.0
                     plain = plain.replace(f':{i}:', f'({i})')
 
-                result = self.dataProvider.convertModelResponseToAudio(
+                result = self.dataProvider.convertModelResponseToAudioV2(
                     self.getSession(
-                        sessionName).memory.getCharTTSServiceId(),
+                        sessionName).memory.getCharTTSUseModel(),
                     self.dataProvider.parseModelResponse(plain),
                     # self.getSession(sessionName).memory.getAvailableStickers()
                 )
@@ -779,7 +762,7 @@ class chatbotManager:
                     plain = self.getSession(
                         sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
 
-                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSServiceId() != 0 and random.randint(0, 2) == 0:
+                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSUseModel() != "None":
                         # remove all emojis in `plain`
                         plain = removeEmojis(plain)
                         for i in self.getSession(sessionName).getAvailableStickers():
@@ -788,9 +771,9 @@ class chatbotManager:
                             # I hate gemini-1.0
                             plain = plain.replace(f':{i}:', f'({i})')
 
-                        result = self.dataProvider.convertModelResponseToAudio(
+                        result = self.dataProvider.convertModelResponseToAudioV2(
                             self.getSession(
-                                sessionName).memory.getCharTTSServiceId(),
+                                sessionName).memory.getCharTTSUseModel(),
                             self.dataProvider.parseModelResponse(plain),
                             # self.getSession(sessionName).memory.getAvailableStickers()
                         )

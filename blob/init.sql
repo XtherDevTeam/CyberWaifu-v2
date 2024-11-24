@@ -4,11 +4,12 @@ drop table if exists emotionPacks;
 drop table if exists personalCharacter;
 
 create table config (
-    userName        string DEFAULT 'Jerry Chou',
-    passwordSalted  string NOT NULL,
-    avatar          blob NOT NULL,
-    avatarMime      string NOT NULL,
-    persona         string NOT NULL default 'A high-school student, who loves playing video games and watching anime.'
+    userName            string DEFAULT 'Jerry Chou',
+    passwordSalted      string NOT NULL,
+    avatar              blob NOT NULL,
+    avatarMime          string NOT NULL,
+    persona             string NOT NULL default 'A high-school student, who loves playing video games and watching anime.',
+    gptSoVitsMiddleware string NOT NULL default 'http://localhost:5000'
 );
 
 create table stickerSets (
@@ -35,6 +36,7 @@ create table personalCharacter (
     avatarMime              string default 'image/png',
     emotionPack             integer default 0,
     ttsServiceId            integer default 0,
+    AIDubUseModel           string default 'None',
     creationTime            string NOT NULL
 );
 
@@ -70,4 +72,13 @@ create table GPTSoVitsReferenceAudios (
     serviceId               integer NOT NULL,
     path                    string NOT NULL,
     language                string NOT NULL
+);
+
+create table tasks (
+    id                      integer PRIMARY KEY AUTOINCREMENT,
+    stagesDescription       string NOT NULL default '[]',
+    status                  string not null default 'pending',
+    creationTime            string NOT NULL DEFAULT 'N/A',
+    completionTime          string default NULL default 'N/A',
+    log                     string default NULL default '""'
 );

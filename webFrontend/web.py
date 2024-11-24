@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import threading
 import uuid
 
@@ -8,8 +9,10 @@ from flask_cors import CORS, cross_origin
 import time
 
 import eventlet
+from h11 import Data
 import livekit.api.room_service
 
+from AIDubMiddlewareAPI import AIDubMiddlewareAPI
 import logger
 import webFrontend.chatbotManager as chatbotManager
 import dataProvider
@@ -20,12 +23,14 @@ import exceptions
 import os
 from io import BytesIO
 import livekit.api
+import taskManager
 
 app = flask.Flask(__name__)
 cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
 dProvider = dataProvider.DataProvider(f'{config.BLOB_URL}/data.db')
+taskManager = taskManager.TaskManager(dProvider)
 chatbotManager = chatbotManager.chatbotManager(dProvider)
 asyncEventLoop = asyncio.new_event_loop()
 asyncio.set_event_loop(asyncEventLoop)
@@ -104,6 +109,7 @@ def serviceInfo():
             'authenticated_session': authenticateSession(),
             'session_username': dProvider.getUserName(),
             'user_persona': dProvider.getUserPersona(),
+            'gpt_sovits_middleware_url': dProvider.getGPTSoVITsMiddleware(),
         },
         'status': True
     }
@@ -315,7 +321,7 @@ def charEdit(id):
     pastMemories = ''
     exampleChats = ''
     useStickerSet = 0
-    useTTSService = 0
+    useTTSModel = ''
 
     try:
         data = flask.request.get_json()
@@ -325,12 +331,12 @@ def charEdit(id):
         pastMemories = data['pastMemories']
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
-        useTTSService = data['useTTSService']
+        useTTSModel = data['useTTSModel']
     except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.updateCharacter(
-        int(id), charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
+        int(id), charName, useTTSModel, useStickerSet, charPrompt, pastMemories, exampleChats)
 
     return {
         'data': 'success',
@@ -351,7 +357,7 @@ def charNew():
     pastMemories = ''
     exampleChats = ''
     useStickerSet = ''
-    useTTSService = ''
+    useTTSModel = ''
 
     try:
         data = flask.request.get_json()
@@ -360,12 +366,12 @@ def charNew():
         pastMemories = data['pastMemories']
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
-        useTTSService = data['useTTSService']
+        useTTSModel = data['useTTSModel']
     except Exception as e:
         return {'data': f'invalid form: {str(e)}', 'status': False}
 
     dProvider.createCharacter(
-        charName, useTTSService, useStickerSet, charPrompt, pastMemories, exampleChats)
+        charName, useTTSModel, useStickerSet, charPrompt, pastMemories, exampleChats)
 
     return {
         'data': 'success',
@@ -931,6 +937,130 @@ def terminateRealTimeVoiceChat():
         return {'data': 'invalid session', 'status': False}
 
     return {'data': 'success', 'status': True}
+
+
+@app.route("/api/v1/gpt_sovits_middleware/info", methods=["POST"])
+def gptSovitsMiddlewareInfo():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    if dProvider.getGPTSoVITsMiddleware() == '':
+        return {'data': 'Middleware not configured', 'status': False}
+
+    try:
+        return {'data': taskManager.getInfo(), 'status': True}
+    except Exception as e:
+        return {'data': f'Middleware not running: {str(e)}', 'status': False}
+
+
+@app.route("/api/v1/gpt_sovits_middleware/run_training", methods=["POST"])
+def gptSovitsMiddlewareRunTraining():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    if dProvider.getGPTSoVITsMiddleware() == '':
+        return {'data': 'Middleware not configured', 'status': False}
+
+    json_req = flask.request.get_json()
+    enabled_char_names = json_req.get('enabled_char_names', [])
+    sources_to_fetch = json_req.get('sources_to_fetch', [])
+    
+    if not enabled_char_names or not sources_to_fetch:
+        return {'data': 'Invalid request: enabled_char_names and sources_to_fetch are required', 'status': False}
+
+    try:
+        return {'data': taskManager.runAIDubModelTraining(enabled_char_names, sources_to_fetch), 'status': True}
+    except Exception as e:
+        return {'data': f'Middleware error: {str(e)}', 'status': False}
+    
+
+@app.route("/api/v1/gpt_sovits_middleware/track", methods=["POST"])
+def gptSovitsMiddlewareTrack():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    if dProvider.getGPTSoVITsMiddleware() == '':
+        return {'data': 'Middleware not configured', 'status': False}
+
+
+    json_req = flask.request.get_json()
+    id = json_req.get('id', None)
+    if id is None:
+        return {'data': 'Invalid request: id is required', 'status': False}
+
+    try:
+        return {'data': taskManager.getTaskInfo(id), 'status': True}
+    except Exception as e:
+        return {'data': f'Middleware error: {str(e)}', 'status': False}
+
+
+@app.route("/api/v1/gpt_sovits_middleware/tasks", methods=["POST"])
+def gptSovitsMiddlewareTasks():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    if dProvider.getGPTSoVITsMiddleware() == '':
+        return {'data': 'Middleware not configured', 'status': False}
+    
+    try:
+        return {'data': taskManager.getTasks(), 'status': True}
+    except Exception as e:
+        return {'data': f'Middleware error: {str(e)}', 'status': False}
+
+    
+    
+@app.route("/api/v1/gpt_sovits_middleware/set_url", methods=["POST"])
+def gptSovitsMiddlewareSetUrl():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():    
+        return {'data': 'not initialized', 'status': False}
+    if dProvider.getGPTSoVITsMiddleware() == '':
+        return {'data': 'Middleware not configured', 'status': False}
+
+    try:
+        data = flask.request.get_json()
+        url = data['url']
+        dProvider.setGPTSoVITsMiddleware(url)
+        taskManager.updateURL(url)
+        return {'data': 'Middleware URL updated', 'status': True}
+    except Exception as e:
+        return {'data': f'Invalid form: {str(e)}', 'status': False}
+
+
+@app.route("/api/v1/gpt_sovits_middleware/delete_task", methods=["POST"])
+def gptSovitsMiddlewareDeleteTask():
+    if not authenticateSession():
+        return {'data': 'not authenticated', 'status': False}
+    if not dProvider.checkIfInitialized():
+        return {'data': 'not initialized', 'status': False}
+    
+    if dProvider.getGPTSoVITsMiddleware() == '':
+        return {'data': 'Middleware not configured', 'status': False}
+
+    try:
+        data = flask.request.get_json()
+        id = data['id']
+        taskManager.deleteTask(id)
+        return {'data': 'Task deleted', 'status': True}
+    except Exception as e:
+        return {'data': f'Invalid form: {str(e)}', 'status': False}
+
+
+@app.route('/api/v1_test/testcase_dub')
+def testcaseDub():
+    api = AIDubMiddlewareAPI(dProvider.getGPTSoVITsMiddleware())
+    # print requests lib path
+    r = api.dub('Fireworks are for now, but friends are forever.', 'Yoimiya')
+    return flask.Response(r.iter_content(chunk_size=1024), mimetype='audio/aac')
 
 
 def invoke():

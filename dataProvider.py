@@ -5,6 +5,7 @@ import sqlite3
 import logging
 import time
 from turtle import update
+from AIDubMiddlewareAPI import AIDubMiddlewareAPI
 from GPTSoVits import GPTSoVitsAPI
 import config
 import hashlib
@@ -322,6 +323,32 @@ class DataProvider:
             persona (str): New persona.
         """
         self.db.query('update config set persona = ?', (persona, ))
+        
+    
+    def getGPTSoVITsMiddleware(self) -> str:
+        """
+        Get the GPTSoVITs middleware API key from the database.
+
+        Returns:
+            str: GPTSoVITs middleware API url.
+        """
+        f = self.db.query('select gptSoVitsMiddleware from config', one=True)
+        if f is None:
+            return ''
+        else:
+            return f['gptSoVitsMiddleware']
+        
+    
+    def setGPTSoVITsMiddleware(self, middlewareUrl: str) -> None:
+        """
+        Set the GPTSoVITs middleware API key in the database.
+
+        Args:
+            middlewareUrl (str): GPTSoVITs middleware API url.
+        """
+        self.db.query('update config set gptSoVitsMiddleware = ?', (middlewareUrl, ))
+
+    
 
     def authenticate(self, pwd: str) -> None | bool:
         """
@@ -349,15 +376,15 @@ class DataProvider:
         Returns:
             None | dict[str, str | int]: Character information if exists, None otherwise.
         """
-        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime, ttsServiceId from personalCharacter where id = ?', (id, ), one=True)
+        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime, ttsServiceId, AIDubUseModel from personalCharacter where id = ?', (id, ), one=True)
 
-    def createCharacter(self, name: str, useTTSService: int, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
+    def createCharacter(self, name: str, useTTSModel: str, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
         """
         Create a new character in the database.
 
         Args:
             name (str): Character name.
-            useTTSService (int): TTS service ID.
+            useTTSModel (str): TTS model to use.
             useStickerSet (int): Sticker set ID.
             prompt (str): Character prompt.
             initalMemory (str): Initial memory for the character.
@@ -365,8 +392,8 @@ class DataProvider:
             avatarPath (str, optional): Path to the character's avatar. Defaults to f'{config.BLOB_URL}/avatar_2.png'.
         """
         with open(avatarPath, 'rb') as file:
-            return self.db.query('insert into personalCharacter (charName, ttsServiceId, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                                 (name, useTTSService, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, tools.DateProvider()))
+            return self.db.query('insert into personalCharacter (charName, AIDubUseModel, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                 (name, useTTSModel, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, tools.DateProvider()))
 
     def checkIfCharacterExist(self, name: int) -> bool:
         """
@@ -380,19 +407,20 @@ class DataProvider:
         """
         return bool(len(self.db.query('select count(*) from personalCharacter where name = ?')), (name, ))
 
-    def updateCharacter(self, id: int, name: str, useTTSService: int, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str) -> None:
+    def updateCharacter(self, id: int, name: str, useTTSModel: str, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str) -> None:
         """
         Update character information in the database.
 
         Args:
             id (int): Character ID.
-            useTTSService (int): the TTS service to use
+            useTTSModel (str): TTS model to use.
             name (str): New character name.
             prompt (str): New character prompt.
             pastMemories (str): New past memories for the character.
         """
-        self.db.query('update personalCharacter set charName = ?, ttsServiceId = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ? where id = ?',
-                      (name, useTTSService, useStickerSet, prompt, pastMemories, exampleChats, id))
+        print(useTTSModel)
+        self.db.query('update personalCharacter set charName = ?, AIDubUseModel = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ? where id = ?',
+                      (name, useTTSModel, useStickerSet, prompt, pastMemories, exampleChats, id))
 
     def getCharacterId(self, name: str) -> int:
         """
@@ -518,13 +546,13 @@ class DataProvider:
 
         l: list[str] = [i.strip() for i in plain.strip().split('|<spliter>|')] if isRTVC else [
             i.strip() for i in plain.strip().split('---')]
-        
+
         # workaround for splitter
         emotion = None
         if isRTVC:
-            emotion = l[0][:l[0].find(':')]
+            emotion = l[0][:l[0].find(':') + 1]
             l[0] = l[0][l[0].find(':')+1:]
-        
+
         r: list[dict[str | int]] = []
         for i in l:
             i = i.strip()
@@ -533,7 +561,7 @@ class DataProvider:
 
             r.append({
                 'type': ChatHistoryType.TEXT,
-                'text': f'{emotion if emotion is not None else ""}:{i}',
+                'text': f'{emotion if emotion is not None else ""}{i}',
                 'timestamp': int(time.time()),
                 'role': 'model'
             })
@@ -1031,7 +1059,7 @@ class DataProvider:
 
     def convertModelResponseToAudio(self, serviceId: int, response: list[dict[str, str]]) -> list[dict[str, str]]:
         """
-        Converts a model response to audio.
+        Converts a model response to audio. Deprecated.
 
         Args:
             response (list[dict[str, str]]): Model response.
@@ -1068,6 +1096,37 @@ class DataProvider:
             })
 
         return result
+
+
+    def convertModelResponseToAudioV2(self, useModel: str, response: list[dict[str, str]]) -> list[dict[str, str]]:
+        """
+        Converts a model response to audio.
+
+        Args:
+            useModel (str): Name of the model to use.
+            response (list[dict[str, str]]): Model response.
+
+        Returns:
+            list[dict[str, str]]: Audio.
+        """
+        # i['text']
+        result = []
+
+        for i in response:
+            API = AIDubMiddlewareAPI(self.getGPTSoVITsMiddleware())
+            logger.Logger.log('Using model: ', useModel)
+            resp = API.dub(i['text'], useModel)
+            attachment = self.saveAudioAttachment(resp.content, 'audio/aac')
+            logger.Logger.log(attachment)
+            result.append({
+                'type': ChatHistoryType.AUDIO,
+                'role': 'model',
+                'text': attachment,
+                'timestamp': int(time.time()),
+            })
+
+        return result
+    
 
     def updateUsername(self, username: str) -> None:
         """

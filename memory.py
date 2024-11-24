@@ -40,6 +40,10 @@ class Memory:
     
     def getCharTTSServiceId(self) -> int:
         return self.char['ttsServiceId']
+    
+    def getCharTTSUseModel(self) -> str:
+        return self.char['AIDubUseModel']
+    
 
     def getAvailableStickers(self) -> list[dict[str, str | int]]:
         return self.dataProvider.getStickerList(self.char['emotionPack'])

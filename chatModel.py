@@ -46,15 +46,21 @@ class ChatGoogleGenerativeAI():
         }, tools=tools)
         self.chat_session: genai.ChatSession | None = None
 
-    def initiate(self, begin_msg: list[dict[str, str]]) -> str:
+    def initiate(self, begin_msg: list[dict[str, str]], streamed: bool = False) -> str | google.generativeai.types.GenerateContentResponse:
         if self.chat_session is None:
             self.chat_session = self.model.start_chat(
-                enable_automatic_function_calling=True)
+                enable_automatic_function_calling=not streamed)
         # initiate chat with beginning message
-        return self.chat_session.send_message(begin_msg).text
+        if not streamed:
+            return self.chat_session.send_message(begin_msg).text
+        else:
+            return self.chat_session.send_message(begin_msg, stream=True)
 
-    def chat(self, user_msg: list[dict[str, str]]) -> str:
+    def chat(self, user_msg: list[dict[str, str]], streamed: bool = False) -> str:
         if self.chat_session is None:
             raise ValueError(f'{__name__}: Chat session not initiated')
         # chat with user message
-        return self.chat_session.send_message(user_msg).text
+        if not streamed:
+            return self.chat_session.send_message(user_msg).text
+        else:
+            return self.chat_session.send_message(user_msg, stream=True)
