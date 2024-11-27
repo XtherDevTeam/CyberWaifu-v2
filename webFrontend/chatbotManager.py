@@ -9,6 +9,9 @@ import threading
 from typing import Optional
 import wave
 
+import PIL.Image
+import PIL.ImageDraw
+import PIL.ImageFont
 import av
 import cv2
 import livekit.api
@@ -30,6 +33,7 @@ import google.ai.generativelanguage as glm
 import webFrontend.config
 import io
 import requests
+import PIL
 
 from models import EmojiToStickerInstrctionModel, TokenCounter
 
@@ -115,9 +119,12 @@ class VoiceChatSession:
         self.message_queue: list[str] = []
         self.terminateSessionCallback = None
         self.loop: asyncio.AbstractEventLoop = None
-        self.broadcastingThread: threading.Thread = None
+        self.audioBroadcastingThread: threading.Thread = None
         self.connected: bool = False
+        self.connectionLogs: list[str] = []
+        self.loggerCallbackId: None | int = None
         logger.Logger.log('initialized voice chat session')
+
 
     def runBroadcastingLoop(self, audioSource) -> None:
         """
@@ -129,6 +136,17 @@ class VoiceChatSession:
         logger.Logger.log('starting broadcasting loop')
         new_loop = asyncio.new_event_loop()
         new_loop.run_until_complete(self.broadcastAudioLoop(audioSource))
+        
+    def runVideoBroadcastingLoop(self, videoSource) -> None:
+        """
+        Start the loop for broadcasting video.
+
+        Returns:
+            None
+        """
+        logger.Logger.log('starting video broadcasting loop')
+        new_loop = asyncio.new_event_loop()
+        new_loop.run_until_complete(self.broadcastVideoLoop(videoSource))
 
     def convertModelResponseToTTSInput(self, parsedResponse: dict[str, str | int | bool]) -> list[dict[str, str | int | bool]]:
         """
@@ -202,6 +220,9 @@ class VoiceChatSession:
         print('chat invoked', len(self.message_queue))
         
         with self.chat_lock:
+            if self.message_queue[0] == "Voices:":
+                self.message_queue = self.message_queue[1:]
+            
             self.message_queue = self.messageQueuePreProcessing(
                 self.message_queue)
             self.message_queue.append(self.getUserMedia())
@@ -374,6 +395,7 @@ class VoiceChatSession:
                 break
             self.currentImageFrame = frame.frame
 
+
     async def start(self, botToken: str, loop: asyncio.AbstractEventLoop) -> None:
         """
         Start the hoster of chat session.
@@ -386,6 +408,7 @@ class VoiceChatSession:
         self.loop = loop
         self.chatRoom = livekit.rtc.Room(loop)
         self.connected = True
+        self.loggerCallbackId = logger.Logger.registerCallback(lambda s: self.connectionLogs.append(s))
 
         @self.chatRoom.on("track_subscribed")
         def on_track_subscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
@@ -431,19 +454,32 @@ class VoiceChatSession:
         await self.chatRoom.connect(f"wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}", botToken)
 
         # publish track
+        # audio
         audioSource = livekit.rtc.AudioSource(
             webFrontend.config.LIVEKIT_SAMPLE_RATE, 1)
         self.broadcastAudioTrack = livekit.rtc.LocalAudioTrack.create_audio_track(
             "stream_track", audioSource)
+        # video
+        videoSource = livekit.rtc.VideoSource(
+            webFrontend.config.LIVEKIT_VIDEO_WIDTH, webFrontend.config.LIVEKIT_VIDEO_HEIGHT)
+        self.broadcastVideoTrack = livekit.rtc.LocalVideoTrack.create_video_track(
+            "video_track", videoSource)
         # we don't support audio/red format
-        publication = await self.chatRoom.local_participant.publish_track(
+        publication_audio = await self.chatRoom.local_participant.publish_track(
             self.broadcastAudioTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_MICROPHONE, red=False))
         logger.Logger.log(f"broadcast audio track published: {
-            publication.track.name}")
+            publication_audio.track.name}")
+        publication_video = await self.chatRoom.local_participant.publish_track(
+            self.broadcastVideoTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_CAMERA, red=False))
+        logger.Logger.log(f"broadcast video track published: {
+            publication_video.track.name}")
 
-        self.broadcastingThread = threading.Thread(
+        self.audioBroadcastingThread = threading.Thread(
             target=self.runBroadcastingLoop, args=(audioSource,))
-        self.broadcastingThread.start()
+        self.audioBroadcastingThread.start()
+        self.videoBroadcastingThread = threading.Thread(
+            target=self.runVideoBroadcastingLoop, args=(videoSource,))
+        self.videoBroadcastingThread.start()
 
         logger.Logger.log('chat session started')
 
@@ -513,6 +549,46 @@ class VoiceChatSession:
                             'Error processing frame, skipping it.')
                         continue
                     await source.capture_frame(livekitFrame)
+    
+    
+    def drawLogs(self) -> numpy.ndarray:
+        img = PIL.Image.new('RGBA', (webFrontend.config.LIVEKIT_VIDEO_WIDTH, webFrontend.config.LIVEKIT_VIDEO_HEIGHT), color='black')
+        draw = PIL.ImageDraw.Draw(img)
+        try:
+            font = PIL.ImageFont.truetype(
+                'consolas.ttf', size=20)
+        except IOError:
+            font = PIL.ImageFont.load_default(size=20)
+        for i, log in enumerate(self.connectionLogs[-48:]):
+            draw.text((10, 10 + i * 20), log, font=font, fill=(255, 255, 255))
+            
+        if len(self.connectionLogs) > 48:
+           del self.connectionLogs[:48]
+        # export ndarray for image
+        img_np = numpy.array(img)
+        # logger.Logger.log(img_np.shape)
+        return img_np
+    
+    
+    async def broadcastVideoLoop(self, source: livekit.rtc.VideoSource):
+        logger.Logger.log('broadcasting video...')
+        while self.connected:
+            # logger.Logger.log(self.broadcastMissions.qsize(), 'missions in queue')
+            # build video frame for 64 lines of logs 
+            img_np = self.drawLogs()
+            # logger.Logger.log(img_np.shape, len(img_np.tobytes()))
+            livekitFrame = livekit.rtc.VideoFrame(
+                data=img_np.astype(numpy.uint8),
+                width=webFrontend.config.LIVEKIT_VIDEO_WIDTH,
+                height=webFrontend.config.LIVEKIT_VIDEO_HEIGHT,
+                type=livekit.rtc.VideoBufferType.BGRA
+            )
+            source.capture_frame(livekitFrame)
+            await asyncio.sleep(1/30)
+        
+        logger.Logger.log('broadcasting video stopped')
+            
+    
 
     def getUserMedia(self) -> dict[str, bytes | str]:
         """
@@ -569,6 +645,7 @@ class VoiceChatSession:
             logger.Logger.log('terminating chat session...')
             self.bot.terminateChat()
             SileroVAD.SileroVAD.reset()
+            logger.Logger.unregisterCallback(self.loggerCallbackId)
             await self.chatRoom.disconnect()
 
         asyncio.ensure_future(f())
