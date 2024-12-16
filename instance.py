@@ -17,12 +17,12 @@ import webFrontend.chatPlugins
 
 
 class Chatbot:    
-    def __init__(self, memory: memory.Memory, userName: str, additionalPlugins: list[typing.Any] = []) -> None:
+    def __init__(self, memory: memory.Memory, userName: str, additionalPlugins: list[typing.Any] = [], rtSession: bool = False) -> None:
         pluginList = webFrontend.chatPlugins.defaultPluginList()
         pluginList.extend(additionalPlugins)
-            
-        self.llm = models.ChatModelProvider(
-            memory.createCharPromptFromCharacter(userName), pluginList)
+        if rtSession:
+            logger.Logger.log('Real time session detected, LLM initialization skipped.')
+        self.llm = None if rtSession else models.ChatModelProvider(memory.createCharPromptFromCharacter(userName), pluginList)
         self.memory = memory
         self.userName = userName
         self.inChatting = False

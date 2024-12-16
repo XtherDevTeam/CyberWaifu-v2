@@ -12,6 +12,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
 from google.generativeai import configure as gemini_configure
 import google.generativeai as genai
+import google.genai
 import torch
 import whisper
 import config
@@ -69,7 +70,8 @@ def BaseModelProvider(temperature:float = 0.9) -> ChatGoogleGenerativeAI:
         safety_settings=MODEL_SAFETY_SETTING,
     )
     
-    
+
+
 def ChatModelProvider(system_prompt: str, enabled_plugins: list[dict]) -> chatModel.ChatGoogleGenerativeAI:
     return chatModel.ChatGoogleGenerativeAI(
         model=config.USE_MODEL,

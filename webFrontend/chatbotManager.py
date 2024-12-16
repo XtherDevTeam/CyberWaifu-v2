@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import contextlib
 import mimetypes
 import os
@@ -8,7 +9,13 @@ import re
 import threading
 from typing import Optional
 import wave
-
+import google.genai.types
+import websockets.asyncio
+import websockets.asyncio.client
+import websockets_proxy
+import google.genai
+import google.genai.live
+import models
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
@@ -30,6 +37,7 @@ import exceptions
 import random
 import livekit
 import google.ai.generativelanguage as glm
+import webFrontend.chatPlugins
 import webFrontend.config
 import io
 import requests
@@ -38,6 +46,7 @@ import PIL
 from models import EmojiToStickerInstrctionModel, TokenCounter
 
 import emoji
+
 
 
 def removeEmojis(text):
@@ -104,7 +113,8 @@ class VoiceChatSession:
         self.sessionName = sessionName
         self.charName = charName
         self.bot = instance.Chatbot(memory.Memory(
-            dataProvider, charName, True), dataProvider.getUserName())
+            dataProvider, charName, True), dataProvider.getUserName(), rtSession=True)
+        self.llmSession = None
         self.chatRoom: Optional[livekit.rtc.Room] = None
         self.dataProvider = dataProvider
         self.currentImageFrame: Optional[livekit.rtc.VideoFrame] = None
@@ -167,7 +177,7 @@ class VoiceChatSession:
 
         return parsedResponse
 
-    def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> None:
+    async def ttsInvocation(self, parsedResponse: dict[str, str | int | bool]) -> None:
         """
         Invoke GPT-SoVITs TTS service to generate audio file for the parsed response.
 
@@ -180,10 +190,10 @@ class VoiceChatSession:
         Returns:
             None
         """
-
         for i in parsedResponse:
             # no proxy
             self.broadcastMissions.put(av.open(VoiceChatResponse(self.AIDubMiddlewareAPI.dub(i['text'], self.ttsUseModel))))
+            logger.Logger.log(f"generated audio for {i['text']}")
 
     def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
         """
@@ -251,14 +261,16 @@ class VoiceChatSession:
 
                 logger.Logger.log(f"chat response: {resp}")
 
-                self.ttsInvocation(
+                await self.ttsInvocation(
                     self.dataProvider.parseModelResponse(resp, isRTVC=True))
             else:
                 logger.Logger.log(f"NOT RESPONDING")
             self.message_queue = []
 
+
     async def VAD(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
+        Deprecated.
         Voice activity detection.
         Fetch and identify each audio frame, when activity detected, save to local temporary file and upload as inline data then send to Gemini model as Input.
 
@@ -380,6 +392,78 @@ class VoiceChatSession:
                     voiced_frames = []
                     bs = []
 
+
+    async def charRealtime(self):
+        """
+        New real time chat method for gemini-2.0-flash-exp
+        """
+        buffer = ''
+        async for response in self.llmSession.receive():
+            if not self.connected:
+                logger.Logger.log('Session terminated, stopping charRealtime loop')
+                self.bot.memory.storeMemory(self.bot.userName, response.text)
+                self.llmPreSession.__aexit__(None, None, None) # memory stored, close the session safely
+                break
+                
+            server_content = response.server_content
+            if server_content is not None:
+                if server_content.model_turn is not None:
+                    for i in server_content.model_turn.parts:
+                        buffer += i.text
+                    if server_content.turn_complete:
+                        logger.Logger.log(f"Chat response: {buffer}")
+            
+                        resp = removeEmojis(buffer)
+                        # use |<spliter>| to split setences
+                        for i in self.bot.getAvailableStickers():
+                            # fuck unicode parentheses
+                            resp = resp.replace(f'({i})', '|<spliter>|')
+                            resp = resp.replace(f'（{i}）', '|<spliter>|')
+                            # I hate gemini-1.0
+                            resp = resp.replace(f':{i}:', '|<spliter>|')
+
+                        # capture whitespace more than 2 times in a row
+                        resp = re.sub(r'\s{2,}', '|<spliter>|', resp)
+                        logger.Logger.log(f"Chat response: {resp}")
+
+                        await self.ttsInvocation(
+                            self.dataProvider.parseModelResponse(resp, isRTVC=True))
+                        
+
+    async def forwardAudioStream(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
+        """
+        Forward audio stream to LLM session in the session.
+
+        Args:
+            stream (livekit.rtc.AudioStream): audio stream
+            mimeType (str): mime type of the audio stream
+
+        Returns:
+            None
+        """
+        frames = 0
+        last_sec = time.time()
+        last_sec_frames = 0
+        limit_to_send = 20
+        data_chunk = b''
+        async for frame in stream:
+            if not self.connected:
+                break
+            last_sec_frames += 1
+            frames += 1
+            avFrame = av.AudioFrame.from_ndarray(numpy.frombuffer(frame.frame.remix_and_resample(16000, 1).data, dtype=numpy.int16).reshape(frame.frame.num_channels, -1), layout='mono', format='s16')
+            data_chunk += avFrame.to_ndarray().tobytes()
+            if frames % limit_to_send == 0:
+                await self.llmSession.send({"data": data_chunk, "mime_type": "audio/pcm"})
+            
+                data_chunk = b''
+                    
+            if time.time() - last_sec > 1:
+                last_sec = time.time()
+                logger.Logger.log(f"forwardAudioStream: last second: {last_sec_frames} frames, num_channels: {frame.frame.num_channels}, sample_rate: {frame.frame.sample_rate}, limit_to_send: {limit_to_send}")
+                last_sec_frames = 0
+    
+    
     async def receiveVideoStream(self, stream: livekit.rtc.VideoStream) -> None:
         """
         Receive video stream from other user.
@@ -393,7 +477,30 @@ class VoiceChatSession:
         async for frame in stream:
             if not self.connected:
                 break
-            self.currentImageFrame = frame.frame
+            img = frame.frame.convert(
+                livekit.rtc.VideoBufferType.BGRA).data.tobytes()
+            img_np = numpy.frombuffer(img, dtype=numpy.uint8).reshape(
+                frame.frame.height,
+                frame.frame.width,
+                4
+            )
+            # convert to jpeg
+            # resize the image so as to save the token
+            scaler = frame.frame.width / 1280
+            new_width, new_height = (int(
+                frame.frame.width // scaler), int(frame.frame.height // scaler))
+            cv2.resize(img_np, (new_width, new_height))
+
+            encoded, buffer = cv2.imencode('.jpg', img_np)
+            
+            """
+            temp = self.dataProvider.tempFilePathProvider('jpg')
+            with open(temp, 'wb') as f:
+                f.write(buffer.tobytes())
+            logger.Logger.log(f"saved as {temp}")
+            """
+            
+            await self.llmSession.send({"data": base64.b64encode(buffer.tobytes()).decode(), "mime_type": "image/jpeg"})
 
 
     async def start(self, botToken: str, loop: asyncio.AbstractEventLoop) -> None:
@@ -404,12 +511,28 @@ class VoiceChatSession:
             None
         """
 
-        logger.Logger.log('preparing to start chat...')
+        logger.Logger.log('Preparing to start chat...')
         self.loop = loop
         self.chatRoom = livekit.rtc.Room(loop)
         self.connected = True
         self.loggerCallbackId = logger.Logger.registerCallback(lambda s: self.connectionLogs.append(s))
 
+        # patch for google.genai
+        if os.getenv("ALL_PROXY") is not None:
+            logger.Logger.log("ALL_PROXY environment variable detected, patching google.genai.live.connect")
+            proxy = websockets_proxy.Proxy.from_url(os.getenv("ALL_PROXY"))
+            def fake_connect(*args, **kwargs):
+                return websockets_proxy.proxy_connect(*args, proxy=proxy, **kwargs)
+            google.genai.live.connect = fake_connect
+
+        client = google.genai.Client(http_options={'api_version': 'v1alpha'})
+        model_id = "gemini-2.0-flash-exp"
+        config = {"response_modalities": ["TEXT"], "system_instruction": self.bot.memory.createCharPromptFromCharacter(self.bot.userName)}
+        self.llmPreSession = client.aio.live.connect(model=model_id, config=config)
+        print("Default's", id(asyncio.get_event_loop()))
+        self.llmSession: google.genai.live.AsyncSession = await self.llmPreSession.__aenter__() # to simulate async context manager
+        asyncio.ensure_future(self.charRealtime())
+        
         @self.chatRoom.on("track_subscribed")
         def on_track_subscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
             logger.Logger.log(f"track subscribed: {publication.sid}")
@@ -420,7 +543,7 @@ class VoiceChatSession:
             elif track.kind == livekit.rtc.TrackKind.KIND_AUDIO:
                 logger.Logger.log('running voice activity detection...')
                 asyncio.ensure_future(
-                    self.VAD(livekit.rtc.AudioStream(track), publication.mime_type))
+                    self.forwardAudioStream(livekit.rtc.AudioStream(track), publication.mime_type))
 
         @self.chatRoom.on("track_unsubscribed")
         def on_track_unsubscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
@@ -643,7 +766,8 @@ class VoiceChatSession:
 
         async def f():
             logger.Logger.log('terminating chat session...')
-            self.bot.terminateChat()
+            self.llmSession.send('EOF', end_of_turn=True)
+            # do it in chat thread
             SileroVAD.SileroVAD.reset()
             logger.Logger.unregisterCallback(self.loggerCallbackId)
             await self.chatRoom.disconnect()
