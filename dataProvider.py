@@ -561,7 +561,7 @@ class DataProvider:
 
             r.append({
                 'type': ChatHistoryType.TEXT,
-                'text': f'{emotion if emotion is not None else ""}{i}',
+                'text': f'{emotion if emotion is not None and not isRTVC else ""}{i}',
                 'timestamp': int(time.time()),
                 'role': 'model'
             })
