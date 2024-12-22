@@ -508,9 +508,10 @@ class VoiceChatSession:
                 ring_frame += 1
             
             if ring_frame > 10:
-                    self.cancelOngoingBroadcast()
-                    current_count = 0
-                    ring_frame = 0
+                logger.Logger.log('Cancelling ongoing broadcast missions') 
+                self.cancelOngoingBroadcast()
+                current_count = 0
+                ring_frame = 0
             
             current_count += 1
             if current_count > 20:
@@ -591,7 +592,7 @@ class VoiceChatSession:
 
         client = google.genai.Client(http_options={'api_version': 'v1alpha'})
         model_id = "gemini-2.0-flash-exp"
-        config = {"response_modalities": ["TEXT"], "system_instruction": self.bot.memory.createCharPromptFromCharacter(self.bot.userName)}
+        config = {"response_modalities": ["TEXT"], "system_instruction": self.bot.memory.createCharPromptFromCharacter(self.bot.userName), "tools": [webFrontend.chatPlugins.getEncodedPluginList()], "temperature": 0.9}
         self.llmPreSession = client.aio.live.connect(model=model_id, config=config)
         print("Default's", id(asyncio.get_event_loop()))
         self.llmSession: google.genai.live.AsyncSession = await self.llmPreSession.__aenter__() # to simulate async context manager
