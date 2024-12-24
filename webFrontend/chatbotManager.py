@@ -81,6 +81,14 @@ class VoiceChatResponse():
 
 
 
+def VoiceChatResponseV2(response: requests.models.Response):
+    """
+    A class for storing voice chat response as bytes.
+    """
+    content = response.content
+    return io.BytesIO(content)
+
+
 class VoiceChatSession:
     """
     Real time chat session for a character.
@@ -193,7 +201,7 @@ class VoiceChatSession:
         """
         for i in parsedResponse:
             # no proxy
-            self.broadcastMissions.put(av.open(VoiceChatResponse(self.AIDubMiddlewareAPI.dub(i['text'], self.ttsUseModel))))
+            self.broadcastMissions.put(av.open(VoiceChatResponseV2(self.AIDubMiddlewareAPI.dub(i['text'], self.ttsUseModel))))
             logger.Logger.log(f"generated audio for {i['text']}")
 
     def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
@@ -411,9 +419,6 @@ class VoiceChatSession:
                 self.bot.memory.storeMemory(self.bot.userName, buffer)
                 await self.llmPreSession.__aexit__(None, None, None) # memory stored, close the session safely
                 break
-            
-            if buffer == 'OPT_Silent':
-                continue
             
             self.broadcastMissionCancelled = False
             
