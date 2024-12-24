@@ -102,8 +102,8 @@ def serviceInfo():
     return {
         'data': {
             'initialized': dProvider.checkIfInitialized(),
-            'api_ver': 'v1',
-            'api_name': 'Yoimiya',
+            'api_ver': 'v2',
+            'api_name': 'Frolicking Flames',
             'image_model': config.USE_MODEL_IMAGE_PARSING,
             'chat_model': config.USE_MODEL,
             'authenticated_session': authenticateSession(),
