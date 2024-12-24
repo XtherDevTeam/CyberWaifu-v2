@@ -108,8 +108,8 @@ def serviceInfo():
             'chat_model': config.USE_MODEL,
             'authenticated_session': authenticateSession(),
             'session_username': dProvider.getUserName(),
-            'user_persona': dProvider.getUserPersona(),
-            'gpt_sovits_middleware_url': dProvider.getGPTSoVITsMiddleware(),
+            'user_persona': dProvider.getUserPersona() if authenticateSession() != -1 else '',
+            'gpt_sovits_middleware_url': dProvider.getGPTSoVITsMiddleware() if authenticateSession() != -1 else '',
         },
         'status': True
     }
