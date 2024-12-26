@@ -81,12 +81,26 @@ class VoiceChatResponse():
 
 
 
-def VoiceChatResponseV2(response: requests.models.Response):
+class VoiceChatResponseV2():
     """
-    A class for storing voice chat response as bytes.
+    New version of VoiceChatResponse class that runs in a separate thread and no streamed response.
     """
-    content = response.content
-    return io.BytesIO(content)
+    def __init__(self, url: str):
+        self.url = url
+        self.thread = threading.Thread(target=self.run, args=())
+        self.thread.start()
+        self.response: Optional[requests.models.Response] = None
+        
+        
+    def run(self) -> None:
+        self.response = requests.get(self.url, stream=False)
+        
+    
+    def get(self) -> bytes:
+        if self.thread.is_alive():
+            self.thread.join()
+        return av.open(io.BytesIO(self.response.content))
+    
 
 
 class VoiceChatSession:
@@ -201,8 +215,9 @@ class VoiceChatSession:
         """
         for i in parsedResponse:
             # no proxy
-            self.broadcastMissions.put(av.open(VoiceChatResponseV2(self.AIDubMiddlewareAPI.dub(i['text'], self.ttsUseModel))))
+            self.broadcastMissions.put(VoiceChatResponseV2(self.AIDubMiddlewareAPI.build_dub_request(i['text'], self.ttsUseModel)))
             logger.Logger.log(f"generated audio for {i['text']}")
+        
 
     def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
         """
@@ -446,7 +461,7 @@ class VoiceChatSession:
             
             buffer = ''
             # await asyncio.to_thread(, self.dataProvider.parseModelResponse(resp, isRTVC=True))
-                        
+
 
     async def forwardAudioStream(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
@@ -704,7 +719,7 @@ class VoiceChatSession:
             # self.currentBroadcastMission = av.open(
             # "./temp/wdnmd.wav", "r")
         else:
-            self.currentBroadcastMission = self.broadcastMissions.get()
+            self.currentBroadcastMission = self.broadcastMissions.get().get()
             # pass
         return self.currentBroadcastMission
 
@@ -719,8 +734,6 @@ class VoiceChatSession:
             else:
                 logger.Logger.log('broadcasting mission...')
                 frame: Optional[av.AudioFrame] = None
-                start = time.time()
-                count = 0
                 for frame in self.currentBroadcastMission.decode(audio=0):
                     # logger.Logger.log(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
                     # frame.layout.channels), [i for i in frame.side_data.keys()])
