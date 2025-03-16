@@ -134,6 +134,7 @@ class VoiceChatSession:
     def __init__(self, sessionName: str, charName: str, dataProvider: dataProvider.DataProvider) -> None:
         self.sessionName = sessionName
         self.charName = charName
+        self.beginTime = time.time()
         self.bot = instance.Chatbot(memory.Memory(
             dataProvider, charName, True), dataProvider.getUserName(), rtSession=True)
         self.llmSession = None
@@ -432,6 +433,14 @@ class VoiceChatSession:
             if not self.connected:
                 logger.Logger.log('Session terminated, stopping chatRealtime loop')
                 self.bot.memory.storeMemory(self.bot.userName, buffer)
+                self.bot.memory.dataProvider.saveChatHistory(self.bot.memory.getCharName(), [
+                    {
+                        'type': dataProvider.ChatHistoryType.TEXT,
+                        'text': f'Voice chat: duration {time.strftime("%H:%M:%S", time.gmtime(time.time() - self.beginTime))}',
+                        'timestamp': int(time.time()),
+                        'role': 'user'
+                    }
+                ])
                 await self.llmPreSession.__aexit__(None, None, None) # memory stored, close the session safely
                 break
             

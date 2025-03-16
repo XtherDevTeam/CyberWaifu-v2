@@ -1,5 +1,6 @@
 import mimetypes
 import os
+from pyexpat import model
 from re import I
 from typing import Any, Optional
 import typing
@@ -28,6 +29,7 @@ class Chatbot:
         self.inChatting = False
         self.conversation = conversation.ConversationMemory(
             userName, self.memory)
+        self.memoryExtractor = conversation.MemoryExtractor(self.conversation, self.memory)
 
     def __enter__(self):
         return None
@@ -40,8 +42,11 @@ class Chatbot:
 
     def begin(self, userInput: None | list[dict[str, str]]) -> str:
         modelInput = self.convertMessageListToInput(userInput)
+        self.conversation.storeUserInput(modelInput)
+        referenceMemory = self.memoryExtractor.extractMemory(modelInput)
+        modelInput.append(f"Reference memory: {referenceMemory.strip()}")
         msg = self.llm.initiate(modelInput)
-        self.conversation.storeBotInput(chatModel.AIMessage(msg))
+        self.conversation.storeBotInput(msg)
         logger.Logger.log(msg)
         return msg
 
@@ -85,11 +90,12 @@ class Chatbot:
         return [self.convertMessageToInput(i) for i in messages]
 
     def chat(self, userInput: list[dict[str, str]]) -> str:
-
         modelInput = self.convertMessageListToInput(userInput)
-
+        self.conversation.storeUserInput(modelInput)
+        referenceMemory = self.memoryExtractor.extractMemory(modelInput)
+        modelInput.append(f"Reference memory: {referenceMemory.strip()}")
         msg = self.llm.chat(modelInput)
-        self.conversation.storeBotInput(chatModel.AIMessage(msg))
+        self.conversation.storeBotInput(msg)
         logger.Logger.log(msg)
         return msg
 

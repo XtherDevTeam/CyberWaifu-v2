@@ -43,13 +43,13 @@ class ChatGoogleGenerativeAI():
     def __init__(self, model: str, temperature: float = 0.9, safety_settings: Any = None, system_prompt: str | None = None, tools: list[typing.Any] = []) -> None:
         self.model: genai.GenerativeModel = genai.GenerativeModel(model_name=model, system_instruction=system_prompt, safety_settings=safety_settings, generation_config={
             'temperature': temperature,
-        }, tools=tools)
+        }, tools=None)
         self.chat_session: genai.ChatSession | None = None
 
     def initiate(self, begin_msg: list[dict[str, str]], streamed: bool = False) -> str | google.generativeai.types.GenerateContentResponse:
         if self.chat_session is None:
             self.chat_session = self.model.start_chat(
-                enable_automatic_function_calling=not streamed)
+                enable_automatic_function_calling=False)
         # initiate chat with beginning message
         if not streamed:
             return self.chat_session.send_message(begin_msg).text

@@ -44,12 +44,14 @@ class ChatHistoryType:
         AUDIO: Audio message entry.
         EMOTION: Emotion message entry.
         INSTRUCTION: Instruction message entry.
+        VOICE_CHAT: Voice chat message entry.
     """
     TEXT = 0
     IMG = 1
     AUDIO = 2
     EMOTION = 3
     INSTRUCTION = 4
+    VOICE_CHAT = 5
 
 
 class ChatHistoryRole:
