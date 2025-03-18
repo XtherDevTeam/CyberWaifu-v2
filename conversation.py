@@ -52,6 +52,14 @@ class MemoryExtractor:
         self.memory = memory
         self.llm = chatModel.ChatGoogleGenerativeAI(config.USE_LEGACY_MODEL, temperature=0.9, system_prompt=self.getPrompt(), tools=[])
         self.isInitiated = False
+        self.pendingBotMessage = None
+        
+    
+    def setPendingBotMessage(self, message: str) -> None:
+        """
+        Sets the pending bot message.
+        """
+        self.pendingBotMessage = message
         
         
     def getPrompt(self) -> str:
@@ -79,6 +87,10 @@ class MemoryExtractor:
         """
         # Extract the memory from the chat session
         memory_list = []
+        if self.pendingBotMessage is not None:
+            memory_list.append(f'{self.memory.getCharName()}: ')
+            memory_list.append(self.pendingBotMessage)
+            self.pendingBotMessage = None
         for message in messages:
             if message['role'] == 'user':
                 memory_list.append(f'{self.chat_session.userName}: ')

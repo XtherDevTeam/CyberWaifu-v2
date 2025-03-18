@@ -42,11 +42,18 @@ class Chatbot:
 
     def begin(self, userInput: None | list[dict[str, str]]) -> str:
         modelInput = self.convertMessageListToInput(userInput)
-        self.conversation.storeUserInput(modelInput)
-        referenceMemory = self.memoryExtractor.extractMemory(modelInput)
+        self.conversation.storeUserInput({
+            'role': 'user',
+            'message': i,
+        } for i in modelInput)
+        referenceMemory = self.memoryExtractor.extractMemory({
+            'role': 'user',
+            'message': i,
+        } for i in modelInput)
         modelInput.append(f"Reference memory: {referenceMemory.strip()}")
         msg = self.llm.initiate(modelInput)
         self.conversation.storeBotInput(msg)
+        self.memoryExtractor.setPendingBotMessage(msg)
         logger.Logger.log(msg)
         return msg
 
@@ -91,11 +98,18 @@ class Chatbot:
 
     def chat(self, userInput: list[dict[str, str]]) -> str:
         modelInput = self.convertMessageListToInput(userInput)
-        self.conversation.storeUserInput(modelInput)
-        referenceMemory = self.memoryExtractor.extractMemory(modelInput)
+        self.conversation.storeUserInput({
+            'role': 'user',
+            'message': i,
+        } for i in modelInput)
+        referenceMemory = self.memoryExtractor.extractMemory({
+            'role': 'user',
+            'message': i,
+        } for i in modelInput)
         modelInput.append(f"Reference memory: {referenceMemory.strip()}")
         msg = self.llm.chat(modelInput)
         self.conversation.storeBotInput(msg)
+        self.memoryExtractor.setPendingBotMessage(msg)
         logger.Logger.log(msg)
         return msg
 
