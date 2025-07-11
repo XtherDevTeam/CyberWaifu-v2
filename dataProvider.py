@@ -4,7 +4,6 @@ import re
 import sqlite3
 import logging
 import time
-from turtle import update
 from AIDubMiddlewareAPI import AIDubMiddlewareAPI
 from GPTSoVits import GPTSoVitsAPI
 import config
@@ -1154,3 +1153,154 @@ class DataProvider:
 
         self.db.query("update config set passwordSalted = ?",
                       (password, ))
+        
+    def createExtraInfo(self, name: str, description: str, author: str, content: str, enabled: bool = True):
+        """
+        Create an extra info in database.
+
+        Args:
+            name (str): Name of the extra info.
+            description (str): Description of the extra info.
+            author (str): Author of the extra info.
+            content (str): Content of the extra info.
+            enabled (bool, optional): Whether the extra info is enabled. Defaults to True.
+        """
+
+        self.db.query("insert into extraInfos (name, description, author, content, enabled) values (?,?,?,?,?)",
+                      (name, description, author, content, enabled))
+        return self.db.query("select last_insert_rowid()")[0]['last_insert_rowid()']
+
+    def getExtraInfo(self, id: int) -> dict[str, str]:
+        """
+        Get an extra info from database.
+
+        Args:
+            id (int): ID of the extra info.
+
+        Returns:
+            dict[str, str]: Extra info.
+        """
+        r = self.db.query(
+            "select * from extraInfos where id = ?", (id,), one=True)
+        if r is None:
+            return None
+        return r
+
+    def getExtraInfoList(self) -> list[dict[str, str]]:
+        """
+        Get all extra info from database.
+
+        Returns:
+            list[dict[str, str]]: List of extra info.
+        """
+        return self.db.query("select name, description, author, enabled, id, content from extraInfos")
+
+    def updateExtraInfo(self, id: int, name: str, description: str, author: str, content: str, enabled: bool):
+        """
+        Update an extra info in database.
+
+        Args:
+            id (int): ID of the extra info.
+            name (str): Name of the extra info.
+            description (str): Description of the extra info.
+            author (str): Author of the extra info.
+            content (str): Content of the extra info.
+            enabled (bool): Whether the extra info is enabled.
+        """
+        self.db.query("update extraInfos set name = ?, description = ?, author = ?, content = ?, enabled = ? where id = ?",
+                      (name, description, author, content, enabled, id))
+        return self.db.query("select last_insert_rowid()")[0]['last_insert_rowid()']
+
+    def deleteExtraInfo(self, id: int):
+        """
+        Delete an extra info from database.
+
+        Args:
+            id (int): ID of the extra info.
+        """
+        self.db.query("delete from extraInfos where id = ?", (id,))
+        return self.getExtraInfoList()
+
+    def createUserScript(self, name: str, author: str, description: str, content: str, enabled: bool = True):
+        """
+        Create a user script in database.
+
+        Args:
+            name (str): Name of the user script.
+            author (str): Author of the user script.
+            description (str): Description of the user script.
+            content (str): Content of the user script.
+            enabled (bool, optional): Whether the user script is enabled. Defaults to True.
+        """
+
+        self.db.query("insert into userScripts (name, author, description, content, enabled) values (?,?,?,?,?)",
+                      (name, author, description, content, enabled))
+        return self.db.query("select last_insert_rowid()")[0]['last_insert_rowid()']
+
+    def getUserScript(self, id: int) -> dict[str, str]:
+        """
+        Get a user script from database.
+
+        Args:
+            id (int): ID of the user script.
+
+        Returns:
+            dict[str, str]: User script.
+        """
+        r = self.db.query(
+            "select * from userScripts where id = ?", (id,), one=True)
+        if r is None:
+            return None
+        return r
+
+    def getUserScriptList(self) -> list[dict[str, str]]:
+        """
+        Get all user script from database.
+
+        Returns:
+            list[dict[str, str]]: List of user script.
+        """
+        return self.db.query("select name, enabled, id, content, description, author from userScripts")
+
+    def updateUserScript(self, id: int, name: str, content: str, author: str, description: str, enabled: bool):
+        """
+        Update a user script in database.
+
+        Args:
+            id (int): ID of the user script.
+            name (str): Name of the user script.
+            content (str): Content of the user script.
+            enabled (bool): Whether the user script is enabled.
+        """
+        self.db.query("update userScripts set name = ?, content = ?, author = ?, description = ?, enabled = ? where id = ?",
+                      (name, content, author, description, enabled, id))
+        return self.db.query("select last_insert_rowid()")[0]['last_insert_rowid()']
+
+    def deleteUserScript(self, id: int):
+        """
+        Delete a user script from database.
+
+        Args:
+            id (int): ID of the user script.
+        """
+        self.db.query("delete from userScripts where id = ?", (id,))
+        return self.getUserScriptList()
+    
+    
+    def getAllEnabledExtraInfos(self) -> list[dict[str, str]]:
+        """
+        Get all enabled extra infos from database.
+
+        Returns:
+            list[dict[str, str]]: List of enabled extra infos.
+        """
+        return self.db.query("select name, description, author, content, id from extraInfos where enabled = 1")
+
+    def getAllEnabledUserScripts(self) -> list[dict[str, str]]:
+        """
+        Get all enabled user scripts from database.
+
+        Returns:
+            list[dict[str, str]]: List of enabled user scripts.
+        """
+        return self.db.query("select name, content, id from userScripts where enabled = 1")

@@ -906,7 +906,7 @@ class chatbotManager:
 
         sessionName = uuid.uuid4().hex
         sessionChatbot = instance.Chatbot(memory.Memory(
-            self.dataProvider, charName), self.dataProvider.getUserName())
+            self.dataProvider, charName)), self.dataProvider.getUserName(), enabled_extra_infos=self.dataProvider.getAllEnabledExtraInfos(), enabled_user_scripts=self.dataProvider.getAllEnabledUserScripts()
         self.pool[sessionName] = {
             'expireTime': time.time() + 60 * 5,
             'bot': sessionChatbot,

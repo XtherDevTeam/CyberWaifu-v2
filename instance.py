@@ -14,22 +14,27 @@ import chatModel
 from langchain_core.messages import SystemMessage, HumanMessage
 import google.generativeai as genai
 import google.ai.generativelanguage as glm
-import webFrontend.chatPlugins
+import workflowTools
+import webFrontend.extensionHandler
 
 
 class Chatbot:    
-    def __init__(self, memory: memory.Memory, userName: str, additionalPlugins: list[typing.Any] = [], rtSession: bool = False) -> None:
-        pluginList = webFrontend.chatPlugins.defaultPluginList()
-        pluginList.extend(additionalPlugins)
+    def __init__(self, memory: memory.Memory, userName: str, enabled_tools: list[typing.Callable] = workflowTools.AvailableTools(), enabled_user_scripts: list[dict[str, str]] = [], enabled_extra_infos: list[dict[str, str]] = [], rtSession: bool = False) -> None:
         if rtSession:
             logger.Logger.log('Real time session detected, LLM initialization skipped.')
-        self.llm = None if rtSession else models.ChatModelProvider(memory.createCharPromptFromCharacter(userName), pluginList)
+        self.toolsHandler = None if rtSession else webFrontend.extensionHandler.ToolsHandler(
+            None, self.memory.dataProvider, enabled_tools, enabled_user_scripts)
+        self.llm = None if rtSession else models.ChatModelProvider(models.PreprocessPrompt(memory.createCharPromptFromCharacter(userName), {
+            'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions,
+        }))
         self.memory = memory
         self.userName = userName
         self.inChatting = False
         self.conversation = conversation.ConversationMemory(
             userName, self.memory)
         self.memoryExtractor = conversation.MemoryExtractor(self.conversation, self.memory)
+        
+        self.toolsHandler.bindLLM(self.llm) if self.toolsHandler else None
 
     def __enter__(self):
         return None
@@ -51,7 +56,7 @@ class Chatbot:
             'message': i,
         } for i in modelInput)
         modelInput.append(f"Reference memory: {referenceMemory.strip()}")
-        msg = self.llm.initiate(modelInput)
+        msg = self.toolsHandler.handleRawResponse(self.llm.initiate(modelInput))
         self.conversation.storeBotInput(msg)
         self.memoryExtractor.setPendingBotMessage(msg)
         logger.Logger.log(msg)
@@ -107,7 +112,7 @@ class Chatbot:
             'message': i,
         } for i in modelInput)
         modelInput.append(f"Reference memory: {referenceMemory.strip()}")
-        msg = self.llm.chat(modelInput)
+        msg = self.toolsHandler.handleRawResponse(self.llm.chat(modelInput))
         self.conversation.storeBotInput(msg)
         self.memoryExtractor.setPendingBotMessage(msg)
         logger.Logger.log(msg)

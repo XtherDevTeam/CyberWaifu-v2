@@ -82,3 +82,21 @@ create table tasks (
     completionTime          string default NULL default 'N/A',
     log                     string default NULL default '""'
 );
+
+create table extraInfos (
+    id integer primary key autoincrement,
+    name string not null,
+    description string not null,
+    enabled integer not null default 1,
+    content string not null,
+    author string not null
+);
+
+create table userScripts (
+    id integer primary key autoincrement,
+    name string not null,
+    content string not null,
+    enabled integer not null default 1,
+    description string not null,
+    author string not null
+);

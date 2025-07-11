@@ -72,7 +72,6 @@ class Memory:
 
     def createCharPromptFromCharacter(self, userName):
         if self.rtSession:
-            # TODO: implement real-time prompt generation
             return models.PreprocessPrompt(config.VOICE_CHAT_INITIAL_PROMPT, {
                 'charName': self.getCharName(),
                 'userName': userName,
@@ -81,7 +80,8 @@ class Memory:
                 'memoryPrompt': self.getPastMemories(),
                 'exampleChats': self.getExampleChats(),
                 'availableEmotions': ', '.join(self.dataProvider.getAvailableTTSReferenceAudio(self.getCharTTSServiceId())),
-                'userPersona': self.dataProvider.getUserPersona()
+                'userPersona': self.dataProvider.getUserPersona(),
+                'toolsPrompt': config.TOOLS_PROMPT
             })
         else:
             availableStickers = ''
@@ -96,5 +96,6 @@ class Memory:
                 'memoryPrompt': self.getPastMemories(),
                 'exampleChats': self.getExampleChats(),
                 'availableStickers': availableStickers,
-                'userPersona': self.dataProvider.getUserPersona()
+                'userPersona': self.dataProvider.getUserPersona(),
+                'toolsPrompt': config.TOOLS_PROMPT
             })
