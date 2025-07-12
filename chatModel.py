@@ -1,4 +1,5 @@
 import mimetypes
+import os
 import time
 import random
 from typing import Any
@@ -9,6 +10,7 @@ import typing
 from google import genai  # New import
 from google.genai import types  # New import for type definitions
 import google.genai.errors
+import httpx
 
 import logger  # Assuming this is a custom logger
 
@@ -50,9 +52,14 @@ class ChatGoogleGenerativeAI():
             self.api_key_pool = api_key_pool
             self.api_key_current = 0
             self.client = genai.Client(api_key=self.api_key_pool[self.api_key_current])
-        else:
+        elif os.environ.get('GOOGLE_API_KEY_POOL'):
+            self.api_key_mode = "pool"
+            self.api_key_pool = os.environ['GOOGLE_API_KEY_POOL'].split(';')
+            self.api_key_current = 0
+            self.client = genai.Client(api_key=self.api_key_pool[self.api_key_current])
+        elif os.environ.get('GOOGLE_API_KEY'):
             # use default API key
-            self.client = genai.Client()
+            self.client = genai.Client(api_key=os.environ['GOOGLE_API_KEY'])
             self.api_key_mode = "single"
 
         self.model_name = model
@@ -92,7 +99,7 @@ class ChatGoogleGenerativeAI():
                 system_instruction=self.system_prompt,
                 thinking_config=types.ThinkingConfigDict(
                     include_thoughts=self.with_thinking,
-                    thinking_budget=self.thinking_budget)
+                    thinking_budget=self.thinking_budget) if self.with_thinking else None
             )
             self.initiate_chat_config = chat_config
 
@@ -131,15 +138,11 @@ class ChatGoogleGenerativeAI():
                     return resp.text
                 else:
                     return self.chat_session.send_message_stream(user_msg)
-            except google.genai.errors.ClientError as e:
+            except (google.genai.errors.ClientError, httpx.ConnectError) as e:
                 logger.Logger.log(f'{__name__}: {e}')
                 current_attempt += 1
-                if isinstance(e.details, list):
-                    for d in e.details:
-                        if isinstance(d, dict):
-                            if 'retryDelay' in d:
-                                time.sleep(int(d['retryDelay'][0:-1])) #xxs
-                                break
+                if current_attempt > retryAttempts:
+                    logger.Logger.log(f'{__name__}: Maximum number of attempts reached. Giving up.')
                 time.sleep(random.randint(5,30))
 
 

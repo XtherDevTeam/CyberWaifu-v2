@@ -1,5 +1,6 @@
 # preserve the original module name to make it compatible with the DeeperResearch extensions.
 
+import os
 import chatModel
 import pathlib
 import requests
@@ -14,6 +15,7 @@ import subprocess
 import sys
 import importlib
 import google.genai.types
+import config
 
 class ToolResponse:
     def __init__(self, content: typing.Any, type: str = 'text/plain'):
@@ -145,8 +147,8 @@ def SearchEngine(query: str, page: int = 1) -> list[dict[str, str]]:
     """
 
     # Set up the Google Custom Search API
-    api_key = dataProvider.DataProvider.getConfig()["google_search_engine_key"]
-    cse_id = dataProvider.DataProvider.getConfig()["google_search_engine_cx_id"]
+    api_key = os.environ.get('google_search_engine_key')
+    cse_id = os.environ.get('google_search_engine_cx_id')
     service = googleapiclient.discovery.build(
         'customsearch', 'v1', developerKey=api_key)
 

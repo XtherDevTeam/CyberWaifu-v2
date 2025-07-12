@@ -23,7 +23,7 @@ class Chatbot:
         if rtSession:
             logger.Logger.log('Real time session detected, LLM initialization skipped.')
         self.toolsHandler = None if rtSession else webFrontend.extensionHandler.ToolsHandler(
-            None, self.memory.dataProvider, enabled_tools, enabled_user_scripts)
+            None, memory.dataProvider, enabled_tools, enabled_user_scripts)
         self.llm = None if rtSession else models.ChatModelProvider(models.PreprocessPrompt(memory.createCharPromptFromCharacter(userName), {
             'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions,
         }))

@@ -8,6 +8,7 @@ import queue
 import re
 import threading
 from typing import Optional
+import typing
 import wave
 import google.genai.types
 import websockets.asyncio
@@ -870,6 +871,136 @@ class VoiceChatSession:
         asyncio.ensure_future(f())
 
 
+class ChatroomSession:
+    def __init__(self, sessionName: str, charName: str, dProvider: dataProvider.DataProvider):
+        self.dataProvider = dProvider
+        self.charName = charName
+        self.chatbot = instance.Chatbot(
+            memory.Memory(
+                self.dataProvider, charName),
+            self.dataProvider.getUserName(),
+            enabled_extra_infos=self.dataProvider.getAllEnabledExtraInfos(),
+            enabled_user_scripts=self.dataProvider.getAllEnabledUserScripts()
+        )
+        self.history = []
+        self.expireTime = time.time() + 60 * 5
+        self.available_events = {
+            'message': [],
+        }
+        
+        def tools_handler_intermediate_response(response: str) -> None:
+            result = self.dataProvider.parseModelResponse(response)
+            self.appendToHistory(result)
+            self.dataProvider.saveChatHistory(self.charName, result)
+            self.trigger('message', result)
+        
+        self.chatbot.toolsHandler.on('intermediate_response', tools_handler_intermediate_response)
+
+    def terminate(self):
+        self.chatbot.terminateChat()
+
+    def on(self, event: str, callback: typing.Callable[..., None]) -> None:
+        if event in self.available_events:
+            self.available_events[event].append(callback)
+        else:
+            raise exceptions.EventNotFound(f"Event {event} not found")
+
+    def trigger(self, event: str, *args, **kwargs) -> None:
+        if event in self.available_events:
+            for callback in self.available_events[event]:
+                callback(*args, **kwargs)
+        else:
+            raise exceptions.EventNotFound(f"Event {event} not found")
+
+    def getHistory(self) -> list[dict[str, str | int | bool]]:
+        return self.history
+
+    def appendToHistory(self, newMsg: list[dict[str, str | int | bool]]) -> None:
+        self.history += newMsg
+        return None
+
+    def beginChat(self, msgChain: list[str]):
+        f = self.dataProvider.parseMessageChain(msgChain)
+        self.appendToHistory(f)
+        plain = self.chatbot.begin(
+            self.dataProvider.convertMessageHistoryToModelInput(f))
+
+        result = []
+
+        logger.Logger.log('TTS available: ', 'True' if (TokenCounter(
+            plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != None) else 'False')
+        if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None":
+            # if True:
+            # remove all emojis in `plain`
+            plain = removeEmojis(plain)
+            for i in self.chatbot.getAvailableStickers():
+                plain = plain.replace(f'（{i}）', f"({i})")
+                plain = plain.replace(f':{i}:', f":{i}:")
+
+            result = self.dataProvider.convertModelResponseToAudioV2(
+                self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain))
+        else:
+            plain = EmojiToStickerInstrctionModel(plain, ''.join(
+                f'({i}) ' for i in self.chatbot.getAvailableStickers()))
+            plain = removeEmojis(plain)
+            for i in self.chatbot.getAvailableStickers():
+                plain = plain.replace(f'（{i}）', f"({i})")
+                plain = plain.replace(f':{i}:', f":{i}:")
+
+            result = self.dataProvider.parseModelResponse(plain)
+
+        self.appendToHistory(result)
+        self.dataProvider.saveChatHistory(self.charName, f + result)
+
+        self.trigger('message', result)
+
+    def sendMessage(self, msgChain: list[str]) -> None:
+        f = self.dataProvider.parseMessageChain(msgChain)
+        self.appendToHistory(f)
+
+        result = None
+        retries = 0
+        while result == None:
+            try:
+                plain = self.chatbot.chat(
+                    userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
+                if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None":
+                    # if True:
+                    for i in self.chatbot.getAvailableStickers():
+                        plain = plain.replace(f'（{i}）', f"({i})")
+                        plain = plain.replace(f':{i}:', f":{i}:")
+
+                    result = self.dataProvider.convertModelResponseToAudioV2(
+                        self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain))
+                else:
+                    plain = EmojiToStickerInstrctionModel(plain, ''.join(
+                        f'({i}) ' for i in self.chatbot.getAvailableStickers()))
+                    plain = removeEmojis(plain)
+                    for i in self.chatbot.getAvailableStickers():
+                        plain = plain.replace(f'（{i}）', f"({i})")
+                        plain = plain.replace(f':{i}:', f":{i}:")
+
+                    result = self.dataProvider.parseModelResponse(plain)
+
+                self.appendToHistory(result)
+                self.dataProvider.saveMessageHistory(self.charName, f + result)
+
+                self.trigger('message', result)
+            except Exception as e:
+                if retries < 3:
+                    retries += 1
+                    logger.Logger.log(
+                        f"Error in sending message, retrying {retries} times: {e}")
+                    time.sleep(1)
+                else:
+                    logger.Logger.log(
+                        f"Error in sending message, giving up: {e}")
+                    raise e
+        self.appendToHistory(result)
+        self.dataProvider.saveChatHistory(self.charName, f + result)
+        self.trigger('message', result)
+
+
 class chatbotManager:
     def __init__(self, dProvider: dataProvider.DataProvider) -> None:
         """
@@ -883,6 +1014,10 @@ class chatbotManager:
         self.pool = {}
         # real time streaming session pool
         self.rtPool = {}
+        
+        self.available_events = {
+            'message': [],
+        }
 
         self.dataProvider = dProvider
         self.clearTh = threading.Thread(
@@ -905,21 +1040,52 @@ class chatbotManager:
                 return i
 
         sessionName = uuid.uuid4().hex
-        sessionChatbot = instance.Chatbot(
-            memory.Memory(
-                self.dataProvider, charName),
-            self.dataProvider.getUserName(),
-            enabled_extra_infos=self.dataProvider.getAllEnabledExtraInfos(),
-            enabled_user_scripts=self.dataProvider.getAllEnabledUserScripts()
-        )
+        session = ChatroomSession(sessionName, charName, self.dataProvider)
+        session.on('message', lambda x: self.trigger('message', sessionName, x))
+        
         self.pool[sessionName] = {
             'expireTime': time.time() + 60 * 5,
-            'bot': sessionChatbot,
+            'session': session,
             'history': [],
-            'charName': charName
+            'charName': charName,
+            'client': None
         }
 
         return sessionName
+
+    def on(self, event: str, callback: typing.Callable[..., None]) -> None:
+        if event in self.available_events:
+            self.available_events[event].append(callback)
+        else:
+            raise exceptions.EventNotFound(f"Event {event} not found")
+
+    def trigger(self, event: str, *args, **kwargs) -> None:
+        if event in self.available_events:
+            for callback in self.available_events[event]:
+                callback(*args, **kwargs)
+        else:
+            raise exceptions.EventNotFound(f"Event {event} not found")
+        
+    def bindClient(self, sessionName: str, client: str) -> None:
+        if sessionName in self.pool:
+            self.pool[sessionName]['client'] = client
+            logger.Logger.log(f'Bound client {client} to session {sessionName}')
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
+            
+    def getSessionByClient(self, client: str) -> ChatroomSession:
+        for i in self.pool.keys():
+            if self.pool[i]['client'] == client:
+                return self.pool[i]['session']
+        return None
+
+    def getClientBySession(self, sessionName: str) -> str:
+        if sessionName in self.pool:
+            return self.pool[sessionName]['client']
+        else:
+            raise exceptions.SessionNotFound(
+                f'{__name__}: Session {sessionName} not found or expired')
 
     def checkIfRtSessionExist(self, charName: str) -> str | None:
         """
@@ -970,9 +1136,9 @@ class chatbotManager:
 
         return sessionName
 
-    def getSession(self, sessionName: str, doRenew: bool = True) -> instance.Chatbot:
+    def getSession(self, sessionName: str, doRenew: bool = True) -> ChatroomSession:
         if sessionName in self.pool:
-            r: instance.Chatbot = self.pool[sessionName]['bot']
+            r: ChatroomSession = self.pool[sessionName]['session']
             if doRenew:
                 self.pool[sessionName]['expireTime'] = time.time() + 60 * 5
                 logger.Logger.log('Session renewed: ',
@@ -1018,122 +1184,25 @@ class chatbotManager:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Real time chat session {sessionName} not found or expired')
 
-    def getSessionHistory(self, sessionName: str) -> list[dict[str, str | int | bool]]:
+    def beginChat(self, sessionName: str, msgChain: list[str]):
         if sessionName in self.pool:
-            r: list[dict[str, str | int | bool]
-                    ] = self.pool[sessionName]['history']
-            return r
+            session = self.getSession(sessionName)
+            session.beginChat(msgChain)
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
 
-    def appendToSessionHistory(self, sessionName: str, newMsg: list[dict[str, str | int | bool]]) -> None:
+    def sendMessage(self, sessionName: str, msgChain: list[str]):
         if sessionName in self.pool:
-            self.pool[sessionName]['history'] += newMsg
-            return None
-        else:
-            raise exceptions.SessionNotFound(
-                f'{__name__}: Session {sessionName} not found or expired')
-
-    def beginChat(self, sessionName: str, msgChain: list[str]) -> list[dict[str, str | int | bool]]:
-        if sessionName in self.pool:
-            f = self.dataProvider.parseMessageChain(msgChain)
-            self.appendToSessionHistory(sessionName, f)
-            plain = self.getSession(
-                sessionName).begin(self.dataProvider.convertMessageHistoryToModelInput(f))
-
-            result = []
-
-            logger.Logger.log('TTS available: ', 'True' if (TokenCounter(plain) < 621 and self.getSession(
-                sessionName).memory.getCharTTSUseModel() != None) else 'False')
-            if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSUseModel() != "None":
-                # if True:
-                # remove all emojis in `plain`
-                plain = removeEmojis(plain)
-                for i in self.getSession(sessionName).getAvailableStickers():
-                    # fuck unicode parentheses
-                    plain = plain.replace(f'（{i}）', f'({i})')
-                    # I hate gemini-1.0
-                    plain = plain.replace(f':{i}:', f'({i})')
-
-                result = self.dataProvider.convertModelResponseToAudioV2(
-                    self.getSession(
-                        sessionName).memory.getCharTTSUseModel(),
-                    self.dataProvider.parseModelResponse(plain),
-                    # self.getSession(sessionName).memory.getAvailableStickers()
-                )
-            else:
-                plain = EmojiToStickerInstrctionModel(plain, ''.join(
-                    f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
-                # further remove processing of emojis
-                plain = removeEmojis(plain)
-                for i in self.getSession(sessionName).getAvailableStickers():
-                    # fuck unicode parentheses
-                    plain = plain.replace(f'（{i}）', f'({i})')
-                    # I hate gemini-1.0
-                    plain = plain.replace(f':{i}:', f'({i})')
-                result = self.dataProvider.parseModelResponse(plain)
-
-            self.appendToSessionHistory(sessionName, result)
-
-            self.dataProvider.saveChatHistory(
-                self.pool[sessionName]['charName'], f + result)
-            return result
-        else:
-            raise exceptions.SessionNotFound(
-                f'{__name__}: Session {sessionName} not found or expired')
-
-    def sendMessage(self, sessionName: str, msgChain: list[str]) -> list[dict[str, str | int | bool]]:
-        if sessionName in self.pool:
-            f = self.dataProvider.parseMessageChain(msgChain)
-            self.appendToSessionHistory(sessionName, f)
-
-            result = None
-            retries = 0
-            while result == None:
-                try:
-                    plain = self.getSession(
-                        sessionName).chat(userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
-
-                    if TokenCounter(plain) < 621 and self.getSession(sessionName).memory.getCharTTSUseModel() != "None":
-                        # remove all emojis in `plain`
-                        plain = removeEmojis(plain)
-                        for i in self.getSession(sessionName).getAvailableStickers():
-                            # fuck unicode parentheses
-                            plain = plain.replace(f'（{i}）', f'({i})')
-                            # I hate gemini-1.0
-                            plain = plain.replace(f':{i}:', f'({i})')
-
-                        result = self.dataProvider.convertModelResponseToAudioV2(
-                            self.getSession(
-                                sessionName).memory.getCharTTSUseModel(),
-                            self.dataProvider.parseModelResponse(plain),
-                            # self.getSession(sessionName).memory.getAvailableStickers()
-                        )
-                    else:
-                        plain = EmojiToStickerInstrctionModel(plain, ''.join(
-                            f'({i}) ' for i in self.getSession(sessionName).getAvailableStickers()))
-
-                        result = self.dataProvider.parseModelResponse(plain)
-
-                except Exception as e:
-                    retries += 1
-                    if retries > dataProvider.config.MAX_CHAT_RETRY_COUNT:
-                        raise exceptions.MaxRetriesExceeded(
-                            f'{__name__}: Invalid response. Max retries exceeded.')
-                    continue
-            self.appendToSessionHistory(sessionName, result)
-            self.dataProvider.saveChatHistory(
-                self.pool[sessionName]['charName'], f + result)
-            return result
+            session = self.getSession(sessionName)
+            session.sendMessage(msgChain)
         else:
             raise exceptions.SessionNotFound(
                 f'{__name__}: Session {sessionName} not found or expired')
 
     def terminateSession(self, sessionName: str) -> None:
         if sessionName in self.pool:
-            charName = self.getSession(sessionName, False).memory.getCharName()
-            self.getSession(sessionName, False).terminateChat()
+            self.getSession(sessionName, False).terminate()
             del self.pool[sessionName]
             logger.Logger.log(f'Terminated session {sessionName}')
         else:

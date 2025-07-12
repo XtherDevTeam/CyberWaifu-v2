@@ -6,14 +6,15 @@ import uuid
 import eventlet.wsgi
 import flask
 from flask_cors import CORS, cross_origin
+from flask_socketio import SocketIO, emit
 import time
-
 import eventlet
-from h11 import Data
 import livekit.api.room_service
+from regex import R
 
 from AIDubMiddlewareAPI import AIDubMiddlewareAPI
 import logger
+from webFrontend import characterGenerator
 import webFrontend.chatbotManager as chatbotManager
 import dataProvider
 import config
@@ -27,6 +28,8 @@ import taskManager
 
 app = flask.Flask(__name__)
 cors = CORS(app)
+socket = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
+
 app.config['CORS_HEADERS'] = 'Content-Type'
 app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
 dProvider = dataProvider.DataProvider(f'{config.BLOB_URL}/data.db')
@@ -148,64 +151,67 @@ def charList():
 
     return Result(True, dProvider.getCharacterList())
 
-
 @app.route("/api/v1/chat/establish", methods=["POST"])
 def chatEstablish():
-    charName = ''
-    beginMsg = ''
-
     if not authenticateSession():
         return Result(False, 'not authenticated')
     if not dProvider.checkIfInitialized():
         return Result(False, 'not initialized')
-    try:
-        data = flask.request.get_json()
-        charName = data['charName']
-        beginMsg = data['msgChain']
-    except Exception as e:
-        return Result(False, f'invalid form: {str(e)}')
 
-    session = chatbotManager.createSession(charName)
-    if len(beginMsg) == 1 and beginMsg[0].strip() == '':
-        return Result(False, 'Null message')
-    return Result(
-        True,
-        {
-            'response': dProvider.parseMessageChain(beginMsg) + chatbotManager.beginChat(session, beginMsg),
-            'session': session
-        }
-    )
-
-
-@app.route("/api/v1/chat/message", methods=["POST"])
-def chatMessage():
     session = ''
-    msgChain = []
+    charName = flask.request.json.get('charName')
+    if charName is None:
+        return Result(False, 'invalid form')
+    
+    session = chatbotManager.createSession(charName)
+    return Result(True, {'session': session})
 
-    if not authenticateSession():
-        return Result(False, 'not authenticated')
-    if not dProvider.checkIfInitialized():
-        return Result(False, 'not initialized')
-    try:
-        data = flask.request.get_json()
-        session = data['session']
-        msgChain = data['msgChain']
-    except Exception as e:
-        return Result(False, f'invalid form: {str(e)}')
 
-    if len(msgChain) == 1 and msgChain[0].strip() == '':
-        return Result(False, 'Null message')
-    try:
-        return Result(
-            True,
-            {
-                'response': dProvider.parseMessageChain(msgChain) + chatbotManager.sendMessage(session, msgChain),
-                'session': session
-            }
-        )
-    except exceptions.SessionNotFound as e:
-        return Result(False, str(e))
+@socket.on('connect', '/chat')
+def socketConnect():
+    # set client sid
+    flask.session['sid'] = flask.request.sid
+    logger.Logger.log(f'client {flask.session.get("sid")} connected')
 
+
+@socket.on('initialize', '/chat')
+def socketChatEstablish(data):
+    # get client id
+    client_sid = flask.session.get('sid', None)
+    
+    sessionName = data.get('sessionName')
+    if sessionName is None:
+        logger.Logger.log('invalid session name')
+        socket.emit('error', 'invalid session name', room=client_sid, namespace="/chat")
+        return
+    
+    beginMsg = data.get('beginMsg')
+    if beginMsg is None:
+        logger.Logger.log('invalid begin message')
+        socket.emit('error', 'invalid begin message', room=client_sid, namespace="/chat")
+        return
+
+    # check if session exist
+    session = chatbotManager.getSession(sessionName)
+    if session is None:
+        socket.emit('error', 'invalid session', room=client_sid, namespace="/chat")
+        return
+    
+    logger.Logger.log(f'session {sessionName} established')
+    # bind client id to session
+    chatbotManager.bindClient(sessionName, client_sid)
+    session.beginChat(beginMsg)
+    # send history to client
+    history = session.getHistory()
+    socket.emit('history', history)
+    
+@socket.on('message', '/chat')
+def socketChatMessage(data):
+    # get client id
+    client_sid = flask.session.get('sid', None)
+    
+    session = chatbotManager.getSessionByClient(client_sid)
+    session.sendMessage(data['msgChain'])
 
 @app.route("/api/v1/chat/keep_alive", methods=["POST"])
 def chatKeepAlive():
@@ -261,7 +267,7 @@ def attachmentUploadAudio():
         flask.request.files[i].save(io)
         io.seek(0)
         id = dProvider.saveAudioAttachment(io.read(), mime)
-        return Result(True, {'data': 'success', 'id': id})
+        return {'data': 'success', 'id': id}
 
 
 @app.route("/api/v1/attachment/upload/image", methods=["POST"])
@@ -281,7 +287,7 @@ def attachmentUploadImage():
         io.seek(0)
         id = dProvider.saveImageAttachment(io.read(), mime)
         # only accept the first file
-        return Result(True, {'data': 'success', 'id': id})
+        return {'data': 'success', 'id': id}
 
 
 @app.route("/api/v1/attachment/<attachmentId>", methods=["GET"])
@@ -614,7 +620,7 @@ def ttsCreate():
     description = ''
     url = ''
     ttsInferYamlPath = ''
-    
+
     try:
         name = flask.request.json['name']
         description = flask.request.json['description']
@@ -737,7 +743,8 @@ def ttsServiceUpdate():
         return Result(False, f'invalid form: {str(e)}')
 
     try:
-        dProvider.updateGPTSoVitsService(id, name, url, description, ttsInferYamlPath)
+        dProvider.updateGPTSoVitsService(
+            id, name, url, description, ttsInferYamlPath)
         return Result(True, None)
     except:
         return Result(False, 'service not exist')
@@ -821,7 +828,6 @@ def updatePersona():
     return Result(True, 'success')
 
 
-
 @app.route("/api/v1/update_password", methods=["POST"])
 def updatePassword():
     if not authenticateSession():
@@ -896,7 +902,7 @@ def establishRealTimeVoiceChat():
         await (await getLiveKitAPI()).room.create_room(create=livekit.api.CreateRoomRequest(name=sessionName, empty_timeout=10*60, max_participants=2))
 
     asyncEventLoop.run_until_complete(f())
-    
+
     def th():
         newloop = asyncio.new_event_loop()
         asyncio.set_event_loop(newloop)
@@ -906,10 +912,10 @@ def establishRealTimeVoiceChat():
         finally:
             logger.Logger.log('I died')
             newloop.close()
-    
+
     t = threading.Thread(target=th)
     t.start()
-    
+
     chatbotManager.createRtSession(charName, sessionName, session)
 
     return Result(True, {'session': sessionName, 'token': userToken, 'url': webFrontend.config.LIVEKIT_API_EXTERNAL_URL})
@@ -942,7 +948,7 @@ def gptSovitsMiddlewareInfo():
         return Result(False, 'not authenticated')
     if not dProvider.checkIfInitialized():
         return Result(False, 'not initialized')
-    
+
     if dProvider.getGPTSoVITsMiddleware() == '':
         return Result(False, 'Middleware not configured')
 
@@ -958,14 +964,14 @@ def gptSovitsMiddlewareRunTraining():
         return Result(False, 'not authenticated')
     if not dProvider.checkIfInitialized():
         return Result(False, 'not initialized')
-    
+
     if dProvider.getGPTSoVITsMiddleware() == '':
         return Result(False, 'Middleware not configured')
 
     json_req = flask.request.get_json()
     enabled_char_names = json_req.get('enabled_char_names', [])
     sources_to_fetch = json_req.get('sources_to_fetch', [])
-    
+
     if not enabled_char_names or not sources_to_fetch:
         return Result(False, 'Invalid request: enabled_char_names and sources_to_fetch are required')
 
@@ -973,7 +979,7 @@ def gptSovitsMiddlewareRunTraining():
         return Result(True, taskManager.runAIDubModelTraining(enabled_char_names, sources_to_fetch))
     except Exception as e:
         return Result(False, f'Middleware error: {str(e)}')
-    
+
 
 @app.route("/api/v1/gpt_sovits_middleware/track", methods=["POST"])
 def gptSovitsMiddlewareTrack():
@@ -981,10 +987,9 @@ def gptSovitsMiddlewareTrack():
         return Result(False, 'not authenticated')
     if not dProvider.checkIfInitialized():
         return Result(False, 'not initialized')
-    
+
     if dProvider.getGPTSoVITsMiddleware() == '':
         return Result(False, 'Middleware not configured')
-
 
     json_req = flask.request.get_json()
     id = json_req.get('id', None)
@@ -1003,22 +1008,21 @@ def gptSovitsMiddlewareTasks():
         return Result(False, 'not authenticated')
     if not dProvider.checkIfInitialized():
         return Result(False, 'not initialized')
-    
+
     if dProvider.getGPTSoVITsMiddleware() == '':
         return Result(False, 'Middleware not configured')
-    
+
     try:
         return Result(True, taskManager.getTasks())
     except Exception as e:
         return Result(False, f'Middleware error: {str(e)}')
 
-    
-    
+
 @app.route("/api/v1/gpt_sovits_middleware/set_url", methods=["POST"])
 def gptSovitsMiddlewareSetUrl():
     if not authenticateSession():
         return Result(False, 'not authenticated')
-    if not dProvider.checkIfInitialized():    
+    if not dProvider.checkIfInitialized():
         return Result(False, 'not initialized')
     if dProvider.getGPTSoVITsMiddleware() == '':
         return Result(False, 'Middleware not configured')
@@ -1039,7 +1043,7 @@ def gptSovitsMiddlewareDeleteTask():
         return Result(False, 'not authenticated')
     if not dProvider.checkIfInitialized():
         return Result(False, 'not initialized')
-    
+
     if dProvider.getGPTSoVITsMiddleware() == '':
         return Result(False, 'Middleware not configured')
 
@@ -1064,7 +1068,7 @@ def testcaseDub():
 def extra_info():
     if authenticateSession() == -1:
         return Result(False, 'Not authenticated')
-    
+
     return Result(True, dProvider.getExtraInfoList())
 
 
@@ -1075,7 +1079,8 @@ def create_extra_info():
     data = flask.request.get_json()
     if 'name' not in data or 'description' not in data or 'author' not in data or 'enabled' not in data or 'content' not in data:
         return Result(False, 'Invalid request')
-    ei_id = dProvider.createExtraInfo(data['name'], data['description'], data['author'], data['content'], data['enabled'])
+    ei_id = dProvider.createExtraInfo(
+        data['name'], data['description'], data['author'], data['content'], data['enabled'])
     return Result(True, ei_id)
 
 
@@ -1111,7 +1116,8 @@ def update_extra_info():
     data = flask.request.get_json()
     if 'id' not in data or 'name' not in data or 'description' not in data or 'author' not in data or 'enabled' not in data or 'content' not in data:
         return Result(False, 'Invalid request')
-    dProvider.updateExtraInfo(data['id'], data['name'], data['description'], data['author'], data['content'], data['enabled'])
+    dProvider.updateExtraInfo(data['id'], data['name'], data['description'],
+                              data['author'], data['content'], data['enabled'])
     return Result(True, 'success')
 
 
@@ -1129,7 +1135,8 @@ def create_user_script():
     data = flask.request.get_json()
     if 'name' not in data or 'content' not in data or 'enabled' not in data or 'author' not in data or 'description' not in data:
         return Result(False, 'Invalid request')
-    us_id = dProvider.createUserScript(data['name'], data['author'], data['description'], data['content'], data['enabled'])
+    us_id = dProvider.createUserScript(
+        data['name'], data['author'], data['description'], data['content'], data['enabled'])
     return Result(True, us_id)
 
 
@@ -1144,6 +1151,7 @@ def get_user_script():
     if r is None:
         return Result(False, 'Invalid id')
     return Result(True, r)
+
 
 @app.route('/api/v1/user_script/delete', methods=['POST'])
 def delete_user_script():
@@ -1163,12 +1171,41 @@ def update_user_script():
     data = flask.request.get_json()
     if 'id' not in data or 'name' not in data or 'content' not in data or 'enabled' not in data or 'author' not in data or 'description' not in data:
         return Result(False, 'Invalid request')
-    dProvider.updateUserScript(data['id'], data['name'], data['content'], data['author'], data['description'], data['enabled'])
+    dProvider.updateUserScript(data['id'], data['name'], data['content'],
+                               data['author'], data['description'], data['enabled'])
     return Result(True, 'success')
+
+
+@app.route('/api/v1/tools/character_generator', methods=['POST'])
+def character_generator():
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    data = flask.request.get_json()
+    if 'name' not in data:
+        return Result(False, 'Invalid request')
+    try:
+        generator = characterGenerator.CharacterGenerator(dProvider)
+        return Result(True, generator.generate(data['name']))
+    except Exception as e:
+        # return Result(False, f'Error: {str(e)}')
+        raise e
+
+
+def route_message(session: str, message: list[dict[str, str]]) -> None:
+    logger.Logger.log(f'Received message from session {session}: {message}')
+    
+    client = chatbotManager.getClientBySession(session)
+    if client is None:
+        logger.Logger.log(f'No client found for session {session}')
+        return
+    
+    socket.emit('message', message, namespace='/chat', room=client)
+
 
 
 def invoke():
     # eventlet.wsgi.server(eventlet.listen((webFrontend.config.APP_HOST,
     #         webFrontend.config.APP_PORT)), app)
-    app.run(host=webFrontend.config.APP_HOST,
+    chatbotManager.on('message', route_message)
+    socket.run(app, host=webFrontend.config.APP_HOST,
             port=webFrontend.config.APP_PORT, debug=False)

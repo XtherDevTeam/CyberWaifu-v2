@@ -13,6 +13,7 @@ from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCateg
 from google.generativeai import configure as gemini_configure
 import google.generativeai as genai
 import google.genai
+import google.genai.types
 import torch
 import whisper
 import config
@@ -42,18 +43,32 @@ def initialize():
 
 
 # No need to handle by users, so not in config.py
-MODEL_SAFETY_SETTING = {
-    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-}
+MODEL_SAFETY_SETTING = [
+    genai.types.SafetySettingDict(
+        category=google.genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold=google.genai.types.HarmBlockThreshold.BLOCK_NONE
+    ),
+    genai.types.SafetySettingDict(
+        category=google.genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold=google.genai.types.HarmBlockThreshold.BLOCK_NONE
+    ),
+    genai.types.SafetySettingDict(
+        category=google.genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold=google.genai.types.HarmBlockThreshold.BLOCK_NONE
+    ),
+    genai.types.SafetySettingDict(
+        category=google.genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold=google.genai.types.HarmBlockThreshold.BLOCK_NONE
+    )
+]
 
 
 # google did not provide the fucking interface for counting token.
 # well, now I get it
 def TokenCounter(string: str) -> int:
-    return ChatGoogleGenerativeAI(model=config.USE_MODEL).get_num_tokens(string)
+    import google.genai
+    client = google.genai.Client()
+    return client.models.count_tokens(model='gemini-2.5-flash', contents=string).total_tokens
 
 
 def PreprocessPrompt(originalPrompt: str, tVars):
@@ -62,23 +77,24 @@ def PreprocessPrompt(originalPrompt: str, tVars):
     return originalPrompt
 
 
-def BaseModelProvider(temperature:float = 0.9) -> ChatGoogleGenerativeAI:
-    return ChatGoogleGenerativeAI(
+def BaseModelProvider(temperature:float = 0.9) -> chatModel.ChatGoogleGenerativeAI:
+    return chatModel.ChatGoogleGenerativeAI(
         model=config.USE_LEGACY_MODEL,
-        convert_system_message_to_human=True,
         temperature=temperature,
         safety_settings=MODEL_SAFETY_SETTING,
+        with_thinking=False
     )
     
 
 
-def ChatModelProvider(system_prompt: str, enabled_plugins: list[dict]) -> chatModel.ChatGoogleGenerativeAI:
+def ChatModelProvider(system_prompt: str) -> chatModel.ChatGoogleGenerativeAI:
     return chatModel.ChatGoogleGenerativeAI(
         model=config.USE_MODEL,
         temperature=0.7,
         safety_settings=MODEL_SAFETY_SETTING,
         system_prompt=system_prompt,
-        tools=enabled_plugins,
+        with_thinking=True,
+        tools=[],
     )
 
 
@@ -123,7 +139,18 @@ def EmojiToStickerInstrctionModel(text: str, availableStickers: list[str]) -> st
         'message': text,
         'availableStickers': availableStickers
     })
-    return BaseModelProvider(1).invoke([HumanMessage(p)]).content
+    return BaseModelProvider(1).initiate(p)
+
+
+def ThinkingModelProvider(prompt: str) -> chatModel.ChatGoogleGenerativeAI:
+    return chatModel.ChatGoogleGenerativeAI(
+        model=config.USE_MODEL,
+        temperature=1,
+        safety_settings=MODEL_SAFETY_SETTING,
+        system_prompt=prompt,
+        with_thinking=True,
+        tools=[],
+    )
 
 
 def AudioToTextModel(audioPath: str) -> str:

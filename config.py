@@ -15,8 +15,8 @@ GPT_SoVITS_SERVICE_URL = ''
 
 # the model going to be used in the chat
 # fk google. wasted 2 days of my life to find out where is this api and found this shit came out after 1 week.
-USE_MODEL = "models/gemini-2.0-flash-thinking-exp-01-21"
-USE_LEGACY_MODEL = "models/gemini-2.0-flash"
+USE_MODEL = "models/gemini-2.5-flash"
+USE_LEGACY_MODEL = "models/gemini-2.5-flash"
 
 # the model going to be used in the image parsing
 # DEPRECATED: Gemini 1.5 Pro has supported image input during multi-turn chat
@@ -34,8 +34,7 @@ BLOB_URL = 'blob'
 TOOLS_PROMPT = \
     '''
 Tool Interaction Format:
--   All tool invocations must be placed at the END of your response, enclosed within a single `<intents>` XML root tag. Each distinct tool call should be within its own `<invocation>` tag, while some instructive commands should be contained in the `<intents>` root tag.
-
+-   All tool invocations must be placed at the END of your response, enclosed within a single `<intents>` XML root tag, in JSON format. Each distinct tool call should be within its own `<invocation>` tag, while some instructive commands should be contained in the `<intents>` root tag.
     Example of tool invocation structure:
     ```xml
     <intents>
@@ -69,7 +68,9 @@ Tool Usage Constraints:
     *   Re-trying a failed attempt.
     *   Following closely related internal links from a page just read.
 
-Finally when you are done with your research, or when you think it is not nessary to use any tools, you can simply not to use any tool invocation and continue with your conversation.
+Occasions and Uses:
+You can use them at any time and even consecutively if you feel like it. They are not just for finishing this turn of chat. Use them out of your personality.
+Finally when you are done with your investigation, or when you think it is not nessary to use any tools, you can simply not to use any tool invocation and continue with your conversation.
 '''
 '''
 The extensive prompt for the tool interaction format and available tools.
@@ -103,7 +104,7 @@ Message blocks:
 
 Message blocks are the minimal unit of your output. You should only output message blocks as your output.
 This allows you to send multiple messages in the row by combining multiple message blocks **separated with `\n---\n`**.
-You can send multiple messages to emulate actual chat process.
+You are encouraged to send multiple short messages to emulate actual chat process.
 
 {{userName}}'s input:
 
@@ -308,6 +309,55 @@ Prompt to extract memories from a given conversation history and memories
 Param used in this prompt:
 - conversationHistory
 - memories
+'''
+
+CREATE_CHARACTER_PROMPT = '''\
+**Your Role:** You are an expert character analyst and profile creator. Your mission is to conduct comprehensive research using the provided tools and then synthesize that information into a structured, detailed character profile for an advanced role-playing AI.
+
+**Character to Profile:** {{charName}}
+
+**Your Task:** Follow the methodology below to gather information and construct the final character profile. Your final and ONLY output should be the completed XML profile. Do not engage in conversation; perform your research using tools and then provide the final XML.
+
+**Methodology:**
+
+**Phase 1: Reconnaissance & Source Identification**
+1.  Start with broad searches to understand the character's identity and context (e.g., from which game, series, or book they originate).
+2.  Identify primary, high-quality sources of information. Prioritize official wikis (like Fandom, Wikipedia), lore databases, and official character biographies. For characters from games like Genshin Impact or Honkai: Star Rail, the Fandom wiki's "Lore" or "Story" pages are essential.
+
+**Phase 2: Deep Dive & Information Extraction**
+1.  Using the `WebsiteReader` tool, systematically extract detailed information from the sources you identified.
+2.  Focus on gathering the following key details:
+    *   **Personality & Demeanor:** Core traits, temperament, virtues, flaws, sense of humor, how they act under stress.
+    *   **Speaking Style & Mannerisms:** Vocabulary, cadence, common phrases, tone of voice, verbal tics, and physical habits.
+    *   **Backstory & World Lore:** Origin story, significant life events, major plot points they are involved in, and their role in the world.
+    *   **Motivations & Beliefs:** What drives them? What are their goals, fears, and core values?
+    *   **Relationships:** Their canonical relationships with other characters (family, friends, rivals, enemies).
+    *   **Appearance:** A brief but clear physical description.
+3.  When visiting fandom page, gather supplementary information from raw plot materials by visiting relevant pages.
+
+**Phase 3: Profile Synthesis & Final Output**
+1.  Once your research is complete and you are confident you have sufficient detail, synthesize all gathered information into the structured XML format below.
+2.  Ensure every field is filled accurately and with high-quality, well-written content that will be useful for the role-playing AI.
+
+**Final Output Format:**
+
+Your final response MUST be a single XML block wrapped in `<intents>...</intents>`. Do not output any other text.
+
+The XML structure must contain these fields:
+-   `charName`: The character's full, canonical name.
+-   `charPrompt`: A comprehensive, third-person imitation instruction. This is the most critical field. It should detail the character's core personality, motivations, speaking style, mannerisms, and backstory. Write it as a guide for an actor.
+-   `exampleChats`: Provide 3-5 diverse, first-person dialogue snippets. Each snippet should showcase a different facet of the character's personality (e.g., one showing their humor, one their anger, one their vulnerability). Use a simple `User:` and `{{charName}}:` format and NOT TO USE XML FOR THIS.
+-   `initialMemories`: A summary of the character's most important canonical life events, relationships, and established lore, written from a **first-person perspective** (e.g., "I remember when I first met...", "My relationship with X has always been complicated because..."). This provides the AI with a foundational 'memory' of its own history.
+
+**Tool Usage Reference:**
+
+{{toolsPrompt}}
+'''
+'''
+Prompt to create a new character for character intimitation task
+Param used in this prompt:
+- charName
+- toolsPrompt
 '''
 
 

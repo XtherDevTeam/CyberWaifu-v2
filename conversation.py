@@ -50,7 +50,7 @@ class MemoryExtractor:
     def __init__(self, conversation: ConversationMemory, memory: memory.Memory) -> None:
         self.chat_session = conversation
         self.memory = memory
-        self.llm = chatModel.ChatGoogleGenerativeAI(config.USE_LEGACY_MODEL, temperature=0.9, system_prompt=self.getPrompt(), tools=[])
+        self.llm = chatModel.ChatGoogleGenerativeAI(config.USE_LEGACY_MODEL, with_thinking=False, temperature=0.9, system_prompt=self.getPrompt(), tools=[])
         self.isInitiated = False
         self.pendingBotMessage = None
         

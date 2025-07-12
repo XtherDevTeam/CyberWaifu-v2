@@ -1,5 +1,5 @@
 # App host
-APP_HOST = '192.168.1.13'
+APP_HOST = '0.0.0.0'
 
 # Yoimiya's Birthday
 APP_PORT = 6211

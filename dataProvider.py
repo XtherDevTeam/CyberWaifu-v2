@@ -1016,9 +1016,7 @@ class DataProvider:
                     'messageJSON': json.dumps(response)
                 })
                 logger.Logger.log(prompt)
-                s = models.BaseModelProvider(1).invoke([langchain_core.messages.HumanMessage(
-                    prompt
-                )]).content
+                s = models.BaseModelProvider(1).initiate(prompt)
 
                 # force to retrieve json response
                 s = s[s.find('['): s.rfind(']')+1]
