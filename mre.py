@@ -121,6 +121,13 @@ class MRE:
         # self.audioBroadcastingThread = threading.Thread(
         #     target=self.runBroadcastingLoop, args=(audioSource,))
         # self.audioBroadcastingThread.start()
+        
+        video_source = livekit.rtc.VideoSource(640, 480)
+        self.broadcastVideoTrack = livekit.rtc.LocalVideoTrack.create_video_track(
+            "stream_track", video_source)
+        publication_video = await self.chatRoom.local_participant.publish_track(
+            self.broadcastVideoTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_CAMERA, red=False))
+        print("Published video track.")
                 
         print("Waiting for participants to join...")
         while True:

@@ -548,6 +548,10 @@ class DataProvider:
         l: list[str] = [i.strip() for i in plain.strip().split('|<spliter>|')] if isRTVC else [
             i.strip() for i in plain.strip().split('---')]
 
+        if isRTVC:
+            # merge two stmt into one
+            l = [' '.join(l[i:i + 2]) for i in range(0, len(l), 2)]
+
         # workaround for splitter
         emotion = None
         if isRTVC:
