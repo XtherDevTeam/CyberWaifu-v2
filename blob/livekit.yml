@@ -55,7 +55,7 @@ keys:
 room:
   enabled_codecs:
     - mime: audio/opus
-    - mime: video/h264
+    - mime: video/vp8
 # room:
 #   # allow rooms to be automatically created when participants join, defaults to true
 #   # auto_create: false
