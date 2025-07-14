@@ -9,7 +9,8 @@ create table config (
     avatar              blob NOT NULL,
     avatarMime          string NOT NULL,
     persona             string NOT NULL default 'A high-school student, who loves playing video games and watching anime.',
-    gptSoVitsMiddleware string NOT NULL default 'http://localhost:5000'
+    gptSoVitsMiddleware string NOT NULL default 'http://localhost:5000',
+    tha4Middleware      string NOT NULL default 'http://localhost:5001' 
 );
 
 create table stickerSets (
@@ -99,4 +100,12 @@ create table userScripts (
     enabled integer not null default 1,
     description string not null,
     author string not null
+);
+
+create table tha4Services (
+    id integer primary key autoincrement,
+    name string not null,                        -- name of the service
+    description string not null,                 -- description of the service
+    configuration string not null,                -- JSON configuration for Live 2D animations
+    avatar blob                                  -- avatar image for the service, must be a 512x512 square PNG image representing character face and body in accordance with the requirements
 );

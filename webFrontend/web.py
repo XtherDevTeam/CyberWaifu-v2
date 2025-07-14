@@ -1176,6 +1176,81 @@ def update_user_script():
     return Result(True, 'success')
 
 
+@app.route('/api/v1/tha4_middleware/service/create', methods=['POST'])
+def create_tha4_service():
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    data = flask.request.get_json()
+    if 'name' not in data or 'description' not in data or 'configuration' not in data:
+        return Result(False, 'Invalid request')
+    service_id = dProvider.createTHA4Service(
+        data['name'], data['description'], data['configuration'])
+    return Result(True, service_id)
+
+
+@app.route('/api/v1/tha4_middleware/service/get', methods=['POST'])
+def get_tha4_service():
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    data = flask.request.get_json()
+    if 'id' not in data:
+        return Result(False, 'Invalid request')
+    r = dProvider.getTHA4Service(data['id'])
+    if r is None:
+        return Result(False, 'Invalid id')
+    return Result(True, r)
+
+@app.route('/api/v1/tha4_middleware/service/delete', methods=['POST'])
+def delete_tha4_service():
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    data = flask.request.get_json()
+    if 'id' not in data:
+        return Result(False, 'Invalid request')
+    dProvider.deleteTHA4Service(data['id'])
+    return Result(True, 'Deleted')
+
+@app.route('/api/v1/tha4_middleware/service/update', methods=['POST'])
+def update_tha4_service():
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    data = flask.request.get_json()
+    if 'id' not in data or 'name' not in data or 'description' not in data or 'configuration' not in data:
+        return Result(False, 'Invalid request')
+    dProvider.updateTHA4Service(data['id'], data['name'], data['description'], data['configuration'])
+    return Result(True, 'success')
+
+
+@app.route('/api/v1/tha4_middleware/service/list', methods=['POST'])
+def list_tha4_service():
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    return Result(True, dProvider.getTHA4ServiceList())
+
+
+@app.route('/api/v1/tha4_middleware/service/get_avatar/<int:service_id>', methods=['GET'])
+def get_tha4_service_avatar(service_id: int):
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    r = dProvider.getTHA4ServiceAvatar(service_id)
+    if r is None:
+        return Result(False, 'Invalid id')
+    return flask.send_file(BytesIO(r), mimetype='image/png', download_name='avatar.png', as_attachment=True)
+
+
+@app.route('/api/v1/tha4_middleware/service/set_avatar/<int:service_id>', methods=['POST'])
+def set_tha4_service_avatar(service_id: int):
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    data = flask.request.files.get('avatar')
+    if data is None:
+        return Result(False, 'Invalid request')
+    dest = BytesIO()
+    data.save(dest)
+    dProvider.updateTHA4ServiceAvatar(service_id, dest.getvalue())
+    return Result(True, 'success')
+
+
 @app.route('/api/v1/tools/character_generator', methods=['POST'])
 def character_generator():
     if authenticateSession() == -1:

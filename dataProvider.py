@@ -1306,3 +1306,92 @@ class DataProvider:
             list[dict[str, str]]: List of enabled user scripts.
         """
         return self.db.query("select name, content, id from userScripts where enabled = 1")
+
+    def createTHA4Service(self, name:str, description: str, configuration: str) -> None:
+        """
+        Create a Talking Head Anime 4 (THA4) service in database.
+
+        Args:
+            name (str): Name of the THA4 service.
+            description (str): Description of the THA4 service.
+            configuration (str): Configuration of the THA4 service.
+        """
+
+        self.db.query("insert into THA4Services (name, description, configuration) values (?,?,?)",
+                      (name, description, configuration))
+
+    def getTHA4Service(self, id: int) -> dict[str, str]:
+        """
+        Get a THA4 service from database.
+
+        Args:
+            id (int): ID of the THA4 service.
+
+        Returns:
+            dict[str, str]: THA4 service.
+        """
+        r = self.db.query(
+            "select * from THA4Services where id = ?", (id,), one=True)
+        if r is None:
+            return None
+        return r
+
+    def getTHA4ServiceList(self) -> list[dict[str, str]]:
+        """
+        Get all THA4 service from database.
+
+        Returns:
+            list[dict[str, str]]: List of THA4 service.
+        """
+        return self.db.query("select name, description, id, configuration from THA4Services")
+
+    def updateTHA4Service(self, id: int, name: str, description: str, configuration: str) -> None:
+        """
+        Update a THA4 service in database.
+
+        Args:
+            id (int): ID of the THA4 service.
+            name (str): Name of the THA4 service.
+            description (str): Description of the THA4 service.
+            configuration (str): Configuration of the THA4 service.
+        """
+        self.db.query("update THA4Services set name = ?, description = ?, configuration = ? where id = ?",
+                      (name, description, configuration, id))
+
+    def deleteTHA4Service(self, id: int) -> None:
+        """
+        Delete a THA4 service from database.
+
+        Args:
+            id (int): ID of the THA4 service.
+        """
+        self.db.query("delete from THA4Services where id = ?", (id,))
+
+    def updateTHA4ServiceAvatar(self, id: int, avatar: bytes) -> None:
+        """
+        Update a THA4 service's avatar in database.
+
+        Args:
+            id (int): ID of the THA4 service.
+            avatar (bytes): Avatar of the THA4 service.
+        """
+        self.db.query("update THA4Services set avatar = ? where id = ?",
+                      (avatar, id))
+
+    def getTHA4ServiceAvatar(self, id: int) -> bytes:
+        """
+        Get a THA4 service's avatar from database.
+
+        Args:
+            id (int): ID of the THA4 service.
+
+        Returns:
+            bytes: Avatar of the THA4 service.
+        """
+        r = self.db.query(
+            "select avatar from THA4Services where id = ?", (id,), one=True)
+        if r is None:
+            return None
+        return r['avatar']
+
+
