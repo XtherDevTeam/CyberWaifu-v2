@@ -349,7 +349,27 @@ class DataProvider:
         """
         self.db.query('update config set gptSoVitsMiddleware = ?', (middlewareUrl, ))
 
-    
+    def setTHA4Middleware(self, middlewareUrl: str) -> None:
+        """
+        Set the THA4 middleware API url in the database.
+
+        Args:
+            middlewareUrl (str): THA4 middleware API url.
+        """
+        self.db.query('update config set tha4Middleware = ?', (middlewareUrl, ))
+
+    def getTHA4Middleware(self) -> str:
+        """
+        Get the THA4 middleware API url from the database.
+
+        Returns:
+            str: THA4 middleware API url.
+        """
+        f = self.db.query('select tha4Middleware from config', one=True)
+        if f is None:
+            return ''
+        else:
+            return f['tha4Middleware']
 
     def authenticate(self, pwd: str) -> None | bool:
         """
@@ -377,9 +397,9 @@ class DataProvider:
         Returns:
             None | dict[str, str | int]: Character information if exists, None otherwise.
         """
-        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime, ttsServiceId, AIDubUseModel from personalCharacter where id = ?', (id, ), one=True)
+        return self.db.query('select id, charName, emotionPack, exampleChats, charPrompt, pastMemories, creationTime, ttsServiceId, AIDubUseModel, tha4Service from personalCharacter where id = ?', (id, ), one=True)
 
-    def createCharacter(self, name: str, useTTSModel: str, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
+    def createCharacter(self, name: str, useTTSModel: str, useStickerSet: int, prompt: str, initalMemory: str, exampleChats: str, tha4Service: int, avatarPath: str = f'{config.BLOB_URL}/avatar_2.png') -> None:
         """
         Create a new character in the database.
 
@@ -390,11 +410,12 @@ class DataProvider:
             prompt (str): Character prompt.
             initalMemory (str): Initial memory for the character.
             exampleChats (str): Example chats for the character.
+            tha4Service (int): THA4 service ID.
             avatarPath (str, optional): Path to the character's avatar. Defaults to f'{config.BLOB_URL}/avatar_2.png'.
         """
         with open(avatarPath, 'rb') as file:
-            return self.db.query('insert into personalCharacter (charName, AIDubUseModel, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                                 (name, useTTSModel, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, tools.DateProvider()))
+            return self.db.query('insert into personalCharacter (charName, AIDubUseModel, emotionPack, charPrompt, initialMemories, pastMemories, avatar, exampleChats, tha4Service, creationTime) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                 (name, useTTSModel, useStickerSet, prompt, initalMemory, initalMemory, file.read(), exampleChats, tha4Service, tools.DateProvider()))
 
     def checkIfCharacterExist(self, name: int) -> bool:
         """
@@ -408,7 +429,7 @@ class DataProvider:
         """
         return bool(len(self.db.query('select count(*) from personalCharacter where name = ?')), (name, ))
 
-    def updateCharacter(self, id: int, name: str, useTTSModel: str, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str) -> None:
+    def updateCharacter(self, id: int, name: str, useTTSModel: str, useStickerSet: int, prompt: str, pastMemories: str, exampleChats: str, tha4Service: int) -> None:
         """
         Update character information in the database.
 
@@ -418,10 +439,12 @@ class DataProvider:
             name (str): New character name.
             prompt (str): New character prompt.
             pastMemories (str): New past memories for the character.
+            exampleChats (str): New example chats for the character.
+            tha4Service (int): THA4 service ID.
         """
         print(useTTSModel)
-        self.db.query('update personalCharacter set charName = ?, AIDubUseModel = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ? where id = ?',
-                      (name, useTTSModel, useStickerSet, prompt, pastMemories, exampleChats, id))
+        self.db.query('update personalCharacter set charName = ?, AIDubUseModel = ?, emotionPack = ?, charPrompt = ?, pastMemories = ?, exampleChats = ?, tha4Service = ? where id = ?',
+                      (name, useTTSModel, useStickerSet, prompt, pastMemories, exampleChats, tha4Service, id))
 
     def getCharacterId(self, name: str) -> int:
         """
@@ -1394,4 +1417,40 @@ class DataProvider:
             return None
         return r['avatar']
 
+
+    def getTha4MiddlewareAPI(self) -> str:
+        """
+        Get the URL of the THA4 middleware API.
+
+        Returns:
+            str: URL of the THA4 middleware API.
+        """
+        r = self.db.query(
+            "select tha4Middleware from config", one=True)
+        if r is None:
+            return None
+        return r['tha4Middleware']
+    
+    def getCharacterTHA4Service(self, characterName: str) -> dict[str, str]:
+        """
+        Get the THA4 service of a character from database.
+
+        Args:
+            characterName (str): Name of the character.
+
+        Returns:
+            dict[str, str]: THA4 service of the character.
+        """
+        r = self.db.query(
+            "select tha4Service from personalCharacter where charName = ?", (characterName,), one=True)
+        if r is None:
+            return None
+        data = self.getTHA4Service(r['tha4Service'])
+        if data is None:
+            return data
+        else:
+            # load configuration
+            config = json.loads(data['configuration'])
+            data['configuration'] = config
+            return data
 

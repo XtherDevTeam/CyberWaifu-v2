@@ -37,6 +37,7 @@ create table personalCharacter (
     avatarMime              string default 'image/png',
     emotionPack             integer default 0,
     ttsServiceId            integer default 0,
+    tha4Service             integer default 0,
     AIDubUseModel           string default 'None',
     creationTime            string NOT NULL
 );

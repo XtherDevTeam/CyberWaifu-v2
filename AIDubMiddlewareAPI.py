@@ -113,3 +113,10 @@ class AIDubMiddlewareAPI():
             return self.data_if_ok_else_raise_error(response.json())
         except requests.exceptions.RequestException as e:
             raise AIDubAPIError(e)
+        
+    def sentiment(self, text: str) -> dict[str, typing.Any]:
+        try:
+            response = requests.post(self.url + "/sentiment", json={"text": text}, timeout=None)
+            return self.data_if_ok_else_raise_error(response.json())
+        except requests.exceptions.RequestException as e:
+            raise AIDubAPIError(e)

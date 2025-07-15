@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import threading
 import uuid
-
 import eventlet.wsgi
 import flask
 from flask_cors import CORS, cross_origin
@@ -10,8 +9,7 @@ from flask_socketio import SocketIO, emit
 import time
 import eventlet
 import livekit.api.room_service
-from regex import R
-
+import Tha4Api
 from AIDubMiddlewareAPI import AIDubMiddlewareAPI
 import logger
 from webFrontend import characterGenerator
@@ -19,7 +17,7 @@ import webFrontend.chatbotManager as chatbotManager
 import dataProvider
 import config
 import webFrontend.chatbotManager
-import webFrontend.config
+from webFrontend.config import LIVEKIT_API_EXTERNAL_URL
 import exceptions
 import os
 from io import BytesIO
@@ -121,6 +119,7 @@ def serviceInfo():
             'session_username': dProvider.getUserName(),
             'user_persona': dProvider.getUserPersona() if authenticateSession() != -1 else '',
             'gpt_sovits_middleware_url': dProvider.getGPTSoVITsMiddleware() if authenticateSession() != -1 else '',
+            'tha4_middleware_url': dProvider.getTha4MiddlewareAPI() if authenticateSession() != -1 else '',
         }
     )
 
@@ -343,6 +342,7 @@ def charEdit(id):
     exampleChats = ''
     useStickerSet = 0
     useTTSModel = ''
+    tha4Service = ''
 
     try:
         data = flask.request.get_json()
@@ -353,11 +353,12 @@ def charEdit(id):
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
         useTTSModel = data['useTTSModel']
+        tha4Service = data['tha4Service']
     except Exception as e:
         return Result(False, f'invalid form: {str(e)}')
 
     dProvider.updateCharacter(
-        int(id), charName, useTTSModel, useStickerSet, charPrompt, pastMemories, exampleChats)
+        int(id), charName, useTTSModel, useStickerSet, charPrompt, pastMemories, exampleChats, tha4Service)
 
     return Result(True, 'success')
 
@@ -376,6 +377,7 @@ def charNew():
     exampleChats = ''
     useStickerSet = ''
     useTTSModel = ''
+    tha4Service = ''
 
     try:
         data = flask.request.get_json()
@@ -385,11 +387,12 @@ def charNew():
         exampleChats = data['exampleChats']
         useStickerSet = data['useStickerSet']
         useTTSModel = data['useTTSModel']
+        tha4Service = data['tha4Service']
     except Exception as e:
         return Result(False, f'invalid form: {str(e)}')
 
     dProvider.createCharacter(
-        charName, useTTSModel, useStickerSet, charPrompt, pastMemories, exampleChats)
+        charName, useTTSModel, useStickerSet, charPrompt, pastMemories, exampleChats, tha4Service)
 
     return Result(True, 'success')
 
@@ -896,17 +899,21 @@ def establishRealTimeVoiceChat():
     botToken = livekit.api.AccessToken(
         webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
         'model').with_name(charName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
+        
+    live2dToken = livekit.api.AccessToken(
+        webFrontend.config.LIVEKIT_API_KEY, webFrontend.config.LIVEKIT_API_SECRET).with_identity(
+        'live2d').with_name(charName).with_grants(livekit.api.VideoGrants(room_join=True, room=sessionName)).to_jwt()
 
     # livekit api is in this file, so we can't put this logic into createRtSession
     async def f():
-        await (await getLiveKitAPI()).room.create_room(create=livekit.api.CreateRoomRequest(name=sessionName, empty_timeout=10*60, max_participants=2))
+        await (await getLiveKitAPI()).room.create_room(create=livekit.api.CreateRoomRequest(name=sessionName, empty_timeout=10*60, max_participants=3))
 
     asyncEventLoop.run_until_complete(f())
 
     def th():
         newloop = asyncio.new_event_loop()
         asyncio.set_event_loop(newloop)
-        asyncio.ensure_future(session.start(botToken, loop=newloop))
+        asyncio.ensure_future(session.start(botToken, live2dToken, loop=newloop))
         try:
             newloop.run_forever()
         finally:
@@ -1188,6 +1195,17 @@ def create_tha4_service():
     return Result(True, service_id)
 
 
+@app.route('/api/v1/tha4_middleware/update_url', methods=['POST'])
+def update_tha4_middleware_url():
+    if authenticateSession() == -1:
+        return Result(False, 'Not authenticated')
+    data = flask.request.get_json()
+    if 'url' not in data:
+        return Result(False, 'Invalid request')
+    dProvider.setTHA4Middleware(data['url'])
+    return Result(True, 'success')
+
+
 @app.route('/api/v1/tha4_middleware/service/get', methods=['POST'])
 def get_tha4_service():
     if authenticateSession() == -1:
@@ -1198,6 +1216,7 @@ def get_tha4_service():
     r = dProvider.getTHA4Service(data['id'])
     if r is None:
         return Result(False, 'Invalid id')
+    del r['avatar']
     return Result(True, r)
 
 @app.route('/api/v1/tha4_middleware/service/delete', methods=['POST'])

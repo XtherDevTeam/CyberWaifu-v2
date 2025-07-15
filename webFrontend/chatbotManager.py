@@ -43,6 +43,7 @@ import webFrontend.config
 import io
 import requests
 import PIL
+import Tha4Api
 
 from models import EmojiToStickerInstrctionModel, TokenCounter
 
@@ -90,19 +91,21 @@ class VoiceChatResponseV2():
     New version of VoiceChatResponse class that runs in a separate thread and no streamed response.
     """
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, text: str):
         self.url = url
+        self.text = text
         self.thread = threading.Thread(target=self.run, args=())
         self.thread.start()
         self.response: Optional[requests.models.Response] = None
 
     def run(self) -> None:
+        logger.Logger.log(self.url)
         self.response = requests.get(self.url, stream=False)
 
-    def get(self) -> bytes:
+    def get(self) -> typing.Tuple[bytes, str]:
         if self.thread.is_alive():
             self.thread.join()
-        return av.open(io.BytesIO(self.response.content))
+        return av.open(io.BytesIO(self.response.content)), self.text
 
 
 class VoiceChatSession:
@@ -144,13 +147,15 @@ class VoiceChatSession:
         self.dataProvider = dataProvider
         self.currentImageFrame: Optional[livekit.rtc.VideoFrame] = None
         self.broadcastAudioTrack: Optional[livekit.rtc.AudioTrack] = None
-        self.broadcastMissions: queue.Queue[dict[str,
-                                                 str | int | bool]] = queue.Queue()
+        self.broadcastMissions: queue.Queue[VoiceChatResponseV2] = queue.Queue()
         self.currentBroadcastMission: Optional[av.InputContainer |
                                                av.OutputContainer] = None
         self.ttsUseModel = self.bot.memory.getCharTTSUseModel()
         self.AIDubMiddlewareAPI = AIDubMiddlewareAPI.AIDubMiddlewareAPI(
             self.dataProvider.getGPTSoVITsMiddleware())
+        self.tha4Api = Tha4Api.Tha4Api(self.dataProvider.getTha4MiddlewareAPI())
+        self.tha4ApiSessionName = ''
+        self.tha4Participant = None
         self.chat_lock = threading.Lock()
         self.message_queue: list[str] = []
         self.terminateSessionCallback = None
@@ -227,7 +232,7 @@ class VoiceChatSession:
         for i in parsedResponse:
             # no proxy
             self.broadcastMissions.put(VoiceChatResponseV2(
-                self.AIDubMiddlewareAPI.build_dub_request(i['text'], self.ttsUseModel)))
+                self.AIDubMiddlewareAPI.build_dub_request(i['text'], self.ttsUseModel), i['text']))
             logger.Logger.log(f"generated audio for {i['text']}")
 
     def messageQueuePreProcessing(self, messageQueue: list[str]) -> list[dict[str, str]]:
@@ -481,7 +486,7 @@ class VoiceChatSession:
     def send_llm(self, input, end_of_turn=True):
         asyncio.ensure_future(self.llmSession.send(input=input, end_of_turn=end_of_turn), loop=self.llm_loop)
 
-    async def start(self, botToken: str, loop: asyncio.AbstractEventLoop) -> None:
+    async def start(self, botToken: str, live2d_token: str, loop: asyncio.AbstractEventLoop) -> None:
         """
         Start the hoster of chat session.
 
@@ -495,6 +500,11 @@ class VoiceChatSession:
         self.connected = True
         self.loggerCallbackId = logger.Logger.registerCallback(
             lambda s: self.connectionLogs.append(s))
+        logger.Logger.log('Establishing connection to THA4 API...')
+        self.live2d_token = live2d_token
+        self.tha4_service = self.dataProvider.getCharacterTHA4Service(self.charName)
+        self.tha4ApiSessionName = self.tha4Api.establish_session(self.tha4_service['configuration'], self.tha4_service['avatar'], 30, self.live2d_token, f'wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}')
+        logger.Logger.log(f"THA4 API session established: {self.tha4ApiSessionName}")
 
         # patch for google.genai
         if os.getenv("ALL_PROXY") is not None:
@@ -510,12 +520,12 @@ class VoiceChatSession:
             None, self.dataProvider, workflowTools.AvailableTools(), self.dataProvider.getAllEnabledUserScripts())
         client = google.genai.Client(http_options={'api_version': 'v1alpha'})
         model_id = "gemini-2.5-flash-live-preview"
-        config = {"response_modalities": ["TEXT"], "system_instruction": models.PreprocessPrompt(self.bot.memory.createCharPromptFromCharacter(
+        gemini_config = {"response_modalities": ["TEXT"], "system_instruction": models.PreprocessPrompt(self.bot.memory.createCharPromptFromCharacter(
             self.bot.userName), {
             'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions
         }), "temperature": 0.9}
         self.llmPreSession = client.aio.live.connect(
-            model=model_id, config=config)
+            model=model_id, config=gemini_config)
         print("Default's", id(asyncio.get_event_loop()))
         # to simulate async context manager
         self.llmThread = threading.Thread(target=self.runLLMChatAsync)
@@ -554,7 +564,7 @@ class VoiceChatSession:
         def on_connected() -> None:
             logger.Logger.log("connected")
 
-        logger.Logger.log('connecting to room...')
+        logger.Logger.log(f'connecting to room wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL} with {botToken} ...')
         await self.chatRoom.connect(f"wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}", botToken)
 
         # publish track
@@ -564,19 +574,19 @@ class VoiceChatSession:
         self.broadcastAudioTrack = livekit.rtc.LocalAudioTrack.create_audio_track(
             "stream_track", audioSource)
         # video
-        videoSource = livekit.rtc.VideoSource(
-            webFrontend.config.LIVEKIT_VIDEO_WIDTH, webFrontend.config.LIVEKIT_VIDEO_HEIGHT)
-        self.broadcastVideoTrack = livekit.rtc.LocalVideoTrack.create_video_track(
-            "video_track", videoSource)
-        # we don't support audio/red format
+        # videoSource = livekit.rtc.VideoSource(
+        #     webFrontend.config.LIVEKIT_VIDEO_WIDTH, webFrontend.config.LIVEKIT_VIDEO_HEIGHT)
+        # self.broadcastVideoTrack = livekit.rtc.LocalVideoTrack.create_video_track(
+        #     "video_track", videoSource)
+        # # we don't support audio/red format
         publication_audio = await self.chatRoom.local_participant.publish_track(
             self.broadcastAudioTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_MICROPHONE, red=False))
         logger.Logger.log(f"broadcast audio track published: {
             publication_audio.track.name}")
-        publication_video = await self.chatRoom.local_participant.publish_track(
-            self.broadcastVideoTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_SCREENSHARE, red=False))
-        logger.Logger.log(f"broadcast video track published: {
-            publication_video.track.name}")
+        # publication_video = await self.chatRoom.local_participant.publish_track(
+        #     self.broadcastVideoTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_SCREENSHARE, red=False))
+        # logger.Logger.log(f"broadcast video track published: {
+        #     publication_video.track.name}")
 
         asyncio.ensure_future(self.broadcastAudioLoop(audioSource))
         # asyncio.ensure_future(self.broadcastVideoLoop(videoSource))
@@ -619,8 +629,8 @@ class VoiceChatSession:
             # self.currentBroadcastMission = av.open(
             # "./temp/wdnmd.wav", "r")
         else:
-            self.currentBroadcastMission = self.broadcastMissions.get().get()
-            # pass
+            self.currentBroadcastMission, self.currentBroadcastText = self.broadcastMissions.get().get()
+            
         return self.currentBroadcastMission
 
     async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int = 1000):
@@ -632,6 +642,8 @@ class VoiceChatSession:
                 # logger.Logger.log('done2')
             else:
                 logger.Logger.log('broadcasting mission...')
+                sentiment = self.AIDubMiddlewareAPI.sentiment(self.currentBroadcastText)['sentiment']
+                self.tha4Api.switch_state(self.tha4ApiSessionName, sentiment)
                 frame: Optional[av.AudioFrame] = None
                 for frame in self.currentBroadcastMission.decode(audio=0):
                     # logger.Logger.log(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
@@ -755,6 +767,7 @@ class VoiceChatSession:
             SileroVAD.SileroVAD.reset()
             logger.Logger.unregisterCallback(self.loggerCallbackId)
             await self.chatRoom.disconnect()
+            self.tha4Api.shutdown_session(self.tha4ApiSessionName)
 
         asyncio.ensure_future(f())
 
