@@ -105,6 +105,7 @@ class VoiceChatResponseV2():
     def get(self) -> typing.Tuple[bytes, str]:
         if self.thread.is_alive():
             self.thread.join()
+        logger.Logger.log(f"got response for {self.text}")
         return av.open(io.BytesIO(self.response.content)), self.text
 
 
@@ -293,6 +294,8 @@ class VoiceChatSession:
                 if response.text is not None:
                     buffer += response.text
 
+            print(buffer)
+
             if not self.connected:
                 logger.Logger.log(
                     'Session terminated, stopping chatRealtime loop')
@@ -322,11 +325,29 @@ class VoiceChatSession:
                 if intent_result:
                     modelInput = [r.asModelInput() if isinstance(
                         r, workflowTools.ToolResponse) else str(r) for r in intent_result]
-                    self.send_llm(input=modelInput, end_of_turn=True)
+                    await self.send_llm(input=modelInput, end_of_turn=True)
 
             broadcastOne(toolsResponse['response'])
 
             buffer = ''
+
+    def pcmToWav(self, pcm_data: bytes) -> bytes:
+        """
+        Convert PCM data to WAV format.
+
+        Args:
+            pcm_data (bytes): PCM data
+
+        Returns:
+            bytes: WAV data
+        """
+        with io.BytesIO() as wav_buffer:
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(16000)
+                wav_file.writeframes(pcm_data)
+            return wav_buffer.getvalue()
 
     async def forwardAudioStream(self, stream: livekit.rtc.AudioStream, mimeType: str) -> None:
         """
@@ -352,6 +373,8 @@ class VoiceChatSession:
 
         ext = mimetypes.guess_extension(mimeType)
         logger.Logger.log('using audio extension:', ext)
+
+        
 
         await self.wait_until_llm_session_ready()
         async for frame in stream:
@@ -382,7 +405,8 @@ class VoiceChatSession:
                 # --- 1. Buffer for LLM ---
                 data_chunk += resampled_bytes
                 if frames_count % limit_to_send == 0:
-                    self.send_llm(input={"data": data_chunk, "mime_type": "audio/pcm"})
+                    # pathlib.Path(f"./temp/audio.{random.randint(1, 1000000)}.wav").write_bytes(self.pcmToWav(data_chunk))
+                    await self.send_llm(input={"data": data_chunk, "mime_type": "audio/pcm"})
                     data_chunk = b''
 
                 # --- 2. Buffer for VAD ---
@@ -470,21 +494,11 @@ class VoiceChatSession:
             logger.Logger.log(f"saved as {temp}")
             """
 
-            self.send_llm(input={"data": base64.b64encode(buffer.tobytes()).decode(), "mime_type": "image/jpeg"})
+            await self.send_llm(input={"data": buffer.tobytes(), "mime_type": "image/jpeg"})
 
-    def runLLMChatAsync(self):
-        logger.Logger.log('starting broadcasting loop')
-        
-        async def initializeLLMSession():
-            self.llmSession = await self.llmPreSession.__aenter__()
-        
-        new_loop = asyncio.new_event_loop()
-        self.llm_loop = new_loop
-        new_loop.run_until_complete(initializeLLMSession())
-        new_loop.run_until_complete(self.chatRealtime())
 
-    def send_llm(self, input, end_of_turn=True):
-        asyncio.ensure_future(self.llmSession.send(input=input, end_of_turn=end_of_turn), loop=self.llm_loop)
+    async def send_llm(self, input, end_of_turn=False):
+        await self.llmSession.send(input=input, end_of_turn=end_of_turn)
 
     async def start(self, botToken: str, live2d_token: str, loop: asyncio.AbstractEventLoop) -> None:
         """
@@ -526,14 +540,16 @@ class VoiceChatSession:
         }), "temperature": 0.9}
         self.llmPreSession = client.aio.live.connect(
             model=model_id, config=gemini_config)
+        self.llmSession = await self.llmPreSession.__aenter__()
+        logger.Logger.log(f"LLM session established: {self.llmSession}")
         print("Default's", id(asyncio.get_event_loop()))
-        # to simulate async context manager
-        self.llmThread = threading.Thread(target=self.runLLMChatAsync)
-        self.llmThread.start()
 
         @self.chatRoom.on("track_subscribed")
         def on_track_subscribed(track: livekit.rtc.Track, publication: livekit.rtc.RemoteTrackPublication, participant: livekit.rtc.RemoteParticipant):
             logger.Logger.log(f"track subscribed: {publication.sid}")
+            if participant.identity == 'live2d':
+                logger.Logger.log('Live2D track detected, ignoring...')
+                pass
             if track.kind == livekit.rtc.TrackKind.KIND_VIDEO:
                 logger.Logger.log('running video stream...')
                 asyncio.ensure_future(self.receiveVideoStream(
@@ -587,7 +603,7 @@ class VoiceChatSession:
         #     self.broadcastVideoTrack, livekit.rtc.TrackPublishOptions(source=livekit.rtc.TrackSource.SOURCE_SCREENSHARE, red=False))
         # logger.Logger.log(f"broadcast video track published: {
         #     publication_video.track.name}")
-
+        asyncio.ensure_future(self.chatRealtime())
         asyncio.ensure_future(self.broadcastAudioLoop(audioSource))
         # asyncio.ensure_future(self.broadcastVideoLoop(videoSource))
         # self.audioBroadcastingThread = threading.Thread(

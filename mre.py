@@ -189,7 +189,7 @@ class MRE:
 
             encoded, buffer = cv2.imencode('.jpg', img_np)
             
-            await self.llmSession.send({"data": base64.b64encode(buffer.tobytes()).decode(), "mime_type": "image/jpeg"})
+            await self.llmSession.send(input={"data": buffer.tobytes(), "mime_type": "image/jpeg"})
             
         
     async def forwardAudioStream(self, stream: livekit.rtc.AudioStream, mime_type: str):
@@ -198,13 +198,17 @@ class MRE:
         last_sec_frames = 0
         limit_to_send = 100
         data_chunk = b''
+        def resample(livekitFrame, inputRate) -> livekit.rtc.AudioFrame:
+            resampler = livekit.rtc.AudioResampler(input_rate=inputRate, output_rate=16000, num_channels=1, quality=livekit.rtc.AudioResamplerQuality.HIGH)
+            resampler.push(livekitFrame)
+            return resampler.flush()[0]
         async for frame in stream:
             last_sec_frames += 1
             frames += 1
-            avFrame = av.AudioFrame.from_ndarray(numpy.frombuffer(frame.frame.remix_and_resample(16000, 1).data, dtype=numpy.int16).reshape(frame.frame.num_channels, -1), layout='mono', format='s16')
+            avFrame = av.AudioFrame.from_ndarray(numpy.frombuffer(resample(frame.frame, frame.frame.sample_rate).data, dtype=numpy.int16).reshape(frame.frame.num_channels, -1), layout='mono', format='s16')
             data_chunk += avFrame.to_ndarray().tobytes()
             if frames % limit_to_send == 0:
-                await self.llmSession.send({"data": data_chunk, "mime_type": "audio/pcm"})
+                await self.llmSession.send(input={"data": data_chunk, "mime_type": "audio/pcm"})
             
                 data_chunk = b''
                     

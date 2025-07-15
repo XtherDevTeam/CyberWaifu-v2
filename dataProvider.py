@@ -573,7 +573,8 @@ class DataProvider:
 
         if isRTVC:
             # merge two stmt into one
-            l = [' '.join(l[i:i + 2]) for i in range(0, len(l), 2)]
+            # l = [' '.join(l[i:i + 2]) for i in range(0, len(l), 2)]
+            pass
 
         # workaround for splitter
         emotion = None

@@ -7,7 +7,6 @@ Provides packages for model operating
 import tools
 import types
 import chatModel
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from google.generativeai.types.safety_types import HarmBlockThreshold, HarmCategory
 from google.generativeai import configure as gemini_configure
