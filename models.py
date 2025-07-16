@@ -97,42 +97,6 @@ def ChatModelProvider(system_prompt: str) -> chatModel.ChatGoogleGenerativeAI:
     )
 
 
-def MemorySummarizingModel(charName: str, pastMemories: str) -> AIMessage:
-    llm = ChatGoogleGenerativeAI(
-        model=config.USE_MODEL_IMAGE_PARSING,
-        convert_system_message_to_human=True,
-        temperature=0.9,
-        safety_settings=MODEL_SAFETY_SETTING,
-        credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
-
-    preprocessed = PreprocessPrompt(
-        config.MEMORY_MERGING_PROMPT,
-        {
-            'charName': charName,
-            'pastMemories': pastMemories
-        }
-    )
-    return llm.invoke([
-        HumanMessage(content=preprocessed)
-    ])
-
-
-def ImageParsingModelProvider():
-    return ChatGoogleGenerativeAI(
-        model=config.USE_MODEL_IMAGE_PARSING, convert_system_message_to_human=True, temperature=1, safety_settings=MODEL_SAFETY_SETTING, credentials=load_creds() if config.AUTHENTICATE_METHOD == 'oauth' else None)
-
-
-def ImageParsingModel(image: str) -> str:
-    logger.Logger.log(image)
-    llm = ImageParsingModelProvider()
-    return llm.invoke([
-        HumanMessage(
-            ["You are received a image, your task is to descibe this image and output text prompt",
-             {"type": "image_url", "image_url": f'http://{webFrontend.config.APP_HOST}:{webFrontend.config.APP_PORT}/api/v1/attachment/{image}'}]
-        )
-    ]).content
-
-
 def EmojiToStickerInstrctionModel(text: str, availableStickers: list[str]) -> str:
     p = PreprocessPrompt(config.TEXT_EMOJI_TO_INSTRUCTION_MAPPING_PROMPT, {
         'message': text,

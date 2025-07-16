@@ -661,6 +661,7 @@ class VoiceChatSession:
                 logger.Logger.log('broadcasting mission...')
                 sentiment = self.AIDubMiddlewareAPI.sentiment(self.currentBroadcastText)['sentiment']
                 self.tha4Api.switch_state(self.tha4ApiSessionName, sentiment)
+                logger.Logger.log(f"Sentiment: {sentiment}, emitted switch_state signal.")
                 frame: Optional[av.AudioFrame] = None
                 for frame in self.currentBroadcastMission.decode(audio=0):
                     # logger.Logger.log(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
@@ -800,15 +801,16 @@ class ChatroomSession:
             enabled_extra_infos=self.dataProvider.getAllEnabledExtraInfos(),
             enabled_user_scripts=self.dataProvider.getAllEnabledUserScripts()
         )
-        self.history = []
         self.expireTime = time.time() + 60 * 5
         self.available_events = {
             'message': [],
         }
 
         def tools_handler_intermediate_response(response: str) -> None:
+            logger.Logger.log('Triggering intermediate response callback')
+            logger.Logger.log(f'{response}')
             result = self.dataProvider.parseModelResponse(response)
-            self.appendToHistory(result)
+            
             self.dataProvider.saveChatHistory(self.charName, result)
             self.trigger('message', result)
 
@@ -831,16 +833,10 @@ class ChatroomSession:
         else:
             raise exceptions.EventNotFound(f"Event {event} not found")
 
-    def getHistory(self) -> list[dict[str, str | int | bool]]:
-        return self.history
-
-    def appendToHistory(self, newMsg: list[dict[str, str | int | bool]]) -> None:
-        self.history += newMsg
-        return None
-
     def beginChat(self, msgChain: list[str]):
         f = self.dataProvider.parseMessageChain(msgChain)
-        self.appendToHistory(f)
+        
+        self.trigger('message', f)
         plain = self.chatbot.begin(
             self.dataProvider.convertMessageHistoryToModelInput(f))
         self.dataProvider.saveChatHistory(self.charName, f)
@@ -849,7 +845,7 @@ class ChatroomSession:
 
         logger.Logger.log('TTS available: ', 'True' if (TokenCounter(
             plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != None) else 'False')
-        if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None":
+        if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None" and random.randint(1, 5) == 1:
             # if True:
             # remove all emojis in `plain`
             plain = removeEmojis(plain)
@@ -869,14 +865,15 @@ class ChatroomSession:
 
             result = self.dataProvider.parseModelResponse(plain)
 
-        self.appendToHistory(result)
-        self.dataProvider.saveChatHistory(self.charName, f + result)
+        
+        self.dataProvider.saveChatHistory(self.charName, result)
 
         self.trigger('message', result)
 
     def sendMessage(self, msgChain: list[str]) -> None:
         f = self.dataProvider.parseMessageChain(msgChain)
-        self.appendToHistory(f)
+        
+        self.trigger('message', f)
         self.dataProvider.saveChatHistory(self.charName, f)
 
         result = None
@@ -885,7 +882,7 @@ class ChatroomSession:
             try:
                 plain = self.chatbot.chat(
                     userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
-                if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None":
+                if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None"  and random.randint(1, 5) == 1:
                     # if True:
                     for i in self.chatbot.getAvailableStickers():
                         plain = plain.replace(f'（{i}）', f"({i})")
@@ -903,7 +900,7 @@ class ChatroomSession:
 
                     result = self.dataProvider.parseModelResponse(plain)
 
-                self.appendToHistory(result)
+                
                 self.dataProvider.saveChatHistory(self.charName, result)
 
                 self.trigger('message', result)
@@ -917,8 +914,8 @@ class ChatroomSession:
                     logger.Logger.log(
                         f"Error in sending message, giving up: {e}")
                     raise e
-        self.appendToHistory(result)
-        self.dataProvider.saveChatHistory(self.charName, f + result)
+        
+        self.dataProvider.saveChatHistory(self.charName, result)
         self.trigger('message', result)
 
 

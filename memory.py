@@ -57,10 +57,13 @@ class Memory:
     
     def getCharExampleChats(self) -> int:
         return self.char['exampleChats']
+    
+    def getCharTHA4Service(self) -> int:
+        return self.char['tha4Service']
 
     def save(self) -> None:
         self.dataProvider.updateCharacter(self.dataProvider.getCharacterId(
-            self.getCharName()), self.getCharName(), self.getCharTTSUseModel(), self.getCharStickerSet(), self.getCharPrompt(), self.getPastMemories(), exampleChats=self.getExampleChats())
+            self.getCharName()), self.getCharName(), self.getCharTTSUseModel(), self.getCharStickerSet(), self.getCharPrompt(), self.getPastMemories(), exampleChats=self.getExampleChats(), tha4Service=self.getCharTHA4Service())
 
     def storeMemory(self, userName: str, conversation: str) -> None:
         self.char['pastMemories'] = self.char['pastMemories'].strip() + \

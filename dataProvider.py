@@ -676,6 +676,7 @@ class DataProvider:
             charName (str): Character name.
             msgHistory (list[dict[str, int | str]]): List of chat messages.
         """
+        logger.Logger.log(f'Triggering saveChatHistory API: {msgHistory}')
         for i in msgHistory:
             self.db.query('insert into chatHistory (charName, role, type, text, timestamp) values (?, ?, ?, ?, ?)',
                           (charName, i['role'], i['type'], i['text'], i['timestamp']))

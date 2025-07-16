@@ -60,7 +60,7 @@ class AIDubMiddlewareAPI():
         
     def dub(self, text: str, char_name: str) -> requests.models.Response:
         try:
-            response = requests.get(self.url + "/dub", params={"text": text, "char_name": char_name}, timeout=None, stream=False)
+            response = requests.get(self.url + "/dub", params={"text": text, "char_name": char_name}, timeout=23333, stream=False)
             return response
         except requests.exceptions.RequestException as e:
             raise AIDubAPIError(e)

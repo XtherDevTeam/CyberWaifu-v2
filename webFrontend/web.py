@@ -26,7 +26,7 @@ import taskManager
 
 app = flask.Flask(__name__)
 cors = CORS(app)
-socket = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
+socket = SocketIO(app, cors_allowed_origins='*', async_mode='gevent')
 
 app.config['CORS_HEADERS'] = 'Content-Type'
 app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY
@@ -200,9 +200,6 @@ def socketChatEstablish(data):
     # bind client id to session
     chatbotManager.bindClient(sessionName, client_sid)
     session.beginChat(beginMsg)
-    # send history to client
-    history = session.getHistory()
-    socket.emit('history', history)
     
 @socket.on('message', '/chat')
 def socketChatMessage(data):
