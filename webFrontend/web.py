@@ -263,7 +263,7 @@ def attachmentUploadAudio():
         flask.request.files[i].save(io)
         io.seek(0)
         id = dProvider.saveAudioAttachment(io.read(), mime)
-        return {'data': 'success', 'id': id}
+        return {'data': 'success', 'id': id, 'status': True}
 
 
 @app.route("/api/v1/attachment/upload/image", methods=["POST"])
@@ -283,7 +283,7 @@ def attachmentUploadImage():
         io.seek(0)
         id = dProvider.saveImageAttachment(io.read(), mime)
         # only accept the first file
-        return {'data': 'success', 'id': id}
+        return {'data': 'success', 'id': id, 'status': True}
 
 
 @app.route("/api/v1/attachment/<attachmentId>", methods=["GET"])

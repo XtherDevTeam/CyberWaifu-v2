@@ -1126,7 +1126,7 @@ class DataProvider:
         return result
 
 
-    def convertModelResponseToAudioV2(self, useModel: str, response: list[dict[str, str]], callback: typing.Callable[[], dict[str, typing.Any]]) -> typing.Generator[dict[str, str], None, None]:
+    def convertModelResponseToAudioV2(self, useModel: str, response: list[dict[str, str]]) -> typing.Generator[dict[str, str], None, None]:
         """
         Converts a model response to audio.
 

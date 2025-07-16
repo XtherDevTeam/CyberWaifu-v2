@@ -56,9 +56,9 @@ import workflowTools
 
 
 def removeEmojis(text: str):
-    text = text.replace('🎵', '(note)')
+    text = text.replace('🎵', '(note)').replace('♪', '(note)')
     text = emoji.replace_emoji(text, '')
-    text = text.replace('(note)', '🎵')
+    text = text.replace('(note)', '♪')
     return text
 
 
@@ -914,6 +914,67 @@ class ChatroomSession:
 
                 self.dataProvider.saveChatHistory(self.charName, result)
                 self.trigger('message', result)
+
+
+class ChatroomSessionTesting:
+    # a simple echo session for testing
+    
+    def __init__(self, sessionName: str, charName: str, dProvider: dataProvider.DataProvider):
+        self.dataProvider = dProvider
+        self.charName = charName
+        self.available_events = {
+            'message': [],
+        }
+        
+    def beginChat(self, msgChain: list[str]):
+        f = self.dataProvider.parseMessageChain(msgChain)
+        logger.Logger.log(f'Dummy echo session received: {f}')
+        test = '''
+        aaa
+        ---
+        bbb
+        ---
+        ccc
+        ---
+        ddd
+        '''
+        test = self.dataProvider.parseModelResponse(test)
+        self.trigger('message', f)
+        self.trigger('message', test)
+        
+    def sendMessage(self, msgChain: list[str]) -> None:
+        f = self.dataProvider.parseMessageChain(msgChain)
+        self.trigger('message', f)
+        logger.Logger.log(f'Dummy echo session received: {f}')
+        test = '''
+        aaa
+        ---
+        bbb
+        ---
+        ccc
+        ---
+        ddd
+        '''
+        logger.Logger.log('Latency for redundant input test')
+        time.sleep(random.randint(10, 20))
+        test = self.dataProvider.parseModelResponse(test)
+        self.trigger('message', test)
+
+    def terminate(self):
+        pass
+    
+    def on(self, event: str, callback: typing.Callable[..., None]) -> None:
+        if event in self.available_events:
+            self.available_events[event].append(callback)
+        else:
+            raise exceptions.EventNotFound(f"Event {event} not found")
+
+    def trigger(self, event: str, *args, **kwargs) -> None:
+        if event in self.available_events:
+            for callback in self.available_events[event]:
+                callback(*args, **kwargs)
+        else:
+            raise exceptions.EventNotFound(f"Event {event} not found")
 
 
 class chatbotManager:

@@ -73,6 +73,9 @@ class ChatGoogleGenerativeAI():
         self.thinking_budget = thinking_budget
         self.saved_chat_history = []
         
+    def getClient(self) -> genai.Client:
+        return self.client
+        
     def switch_api_key(self) -> None:
         if self.api_key_mode == "single":
             # raise ValueError(f'{__name__}: API key mode is set to single. Cannot switch API key.')

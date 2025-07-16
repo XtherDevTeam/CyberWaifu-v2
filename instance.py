@@ -12,8 +12,9 @@ import memory
 import conversation
 import chatModel
 from langchain_core.messages import SystemMessage, HumanMessage
-import google.generativeai as genai
+import google.genai as genai
 import google.ai.generativelanguage as glm
+import io
 import workflowTools
 import webFrontend.extensionHandler
 
@@ -76,26 +77,21 @@ class Chatbot:
             mime, binary = self.memory.dataProvider.getAttachment(
                 message['content'])
 
-            fp = self.memory.dataProvider.tempFilePathProvider(
-                mimetypes.guess_extension(mime))
-            with open(fp, 'wb+') as f:
-                f.write(binary)
+            binaryIO = io.BytesIO(binary)
             
-            r = genai.upload_file(fp, mime_type=mime)
-            logger.Logger.log('Removing temporary file:', fp)
-            os.remove(fp)
+            r = self.llm.getClient().files.upload(file=binaryIO, config={
+                'mime_type': mime
+            })
             return r
         elif message['content_type'] == 'audio':
             mime, binary = self.memory.dataProvider.getAttachment(
                 message['content'])
 
-            fp = self.memory.dataProvider.tempFilePathProvider('m4a')
-            with open(fp, 'wb+') as f:
-                f.write(binary)
-
-            r = genai.upload_file(fp, mime_type=mime)
-            logger.Logger.log('Removing temporary file:', fp)
-            os.remove(fp)
+            binaryIO = io.BytesIO(binary)
+            
+            r = self.llm.getClient().files.upload(file=binaryIO, config={
+                'mime_type': mime
+            })
             return r
         else:
             raise ValueError(f'{__name__}: Unknown message type: {
