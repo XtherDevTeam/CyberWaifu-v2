@@ -778,7 +778,7 @@ class VoiceChatSession:
 
         async def f():
             logger.Logger.log('terminating chat session...')
-            self.send_llm('EOF', end_of_turn=True)
+            await self.send_llm('EOF', end_of_turn=True)
             # do it in chat thread
             SileroVAD.SileroVAD.reset()
             logger.Logger.unregisterCallback(self.loggerCallbackId)
