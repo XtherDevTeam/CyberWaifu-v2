@@ -1126,7 +1126,7 @@ class DataProvider:
         return result
 
 
-    def convertModelResponseToAudioV2(self, useModel: str, response: list[dict[str, str]]) -> list[dict[str, str]]:
+    def convertModelResponseToAudioV2(self, useModel: str, response: list[dict[str, str]], callback: typing.Callable[[], dict[str, typing.Any]]) -> typing.Generator[dict[str, str], None, None]:
         """
         Converts a model response to audio.
 
@@ -1135,25 +1135,20 @@ class DataProvider:
             response (list[dict[str, str]]): Model response.
 
         Returns:
-            list[dict[str, str]]: Audio.
+            typing.Generator[dict[str, str], None, None]: Generator of audio.
         """
-        # i['text']
-        result = []
-
         for i in response:
             API = AIDubMiddlewareAPI(self.getGPTSoVITsMiddleware())
             logger.Logger.log('Using model: ', useModel)
             resp = API.dub(i['text'], useModel)
             attachment = self.saveAudioAttachment(resp.content, 'audio/aac')
             logger.Logger.log(attachment)
-            result.append({
+            yield {
                 'type': ChatHistoryType.AUDIO,
                 'role': 'model',
                 'text': attachment,
                 'timestamp': int(time.time()),
-            })
-
-        return result
+            }
     
 
     def updateUsername(self, username: str) -> None:

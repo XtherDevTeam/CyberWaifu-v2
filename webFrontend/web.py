@@ -26,7 +26,7 @@ import taskManager
 
 app = flask.Flask(__name__)
 cors = CORS(app)
-socket = SocketIO(app, cors_allowed_origins='*', async_mode='gevent')
+socket = SocketIO(app, cors_allowed_origins='*', async_mode='threading', logger=True)
 
 app.config['CORS_HEADERS'] = 'Content-Type'
 app.config['SECRET_KEY'] = webFrontend.config.SECRET_KEY

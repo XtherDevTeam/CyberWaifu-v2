@@ -1,3 +1,4 @@
+import tools
 import asyncio
 import base64
 import contextlib
@@ -54,8 +55,11 @@ from workflowTools import ToolResponse
 import workflowTools
 
 
-def removeEmojis(text):
-    return emoji.replace_emoji(text, '')
+def removeEmojis(text: str):
+    text = text.replace('🎵', '(note)')
+    text = emoji.replace_emoji(text, '')
+    text = text.replace('(note)', '🎵')
+    return text
 
 
 class VoiceChatResponse():
@@ -148,13 +152,15 @@ class VoiceChatSession:
         self.dataProvider = dataProvider
         self.currentImageFrame: Optional[livekit.rtc.VideoFrame] = None
         self.broadcastAudioTrack: Optional[livekit.rtc.AudioTrack] = None
-        self.broadcastMissions: queue.Queue[VoiceChatResponseV2] = queue.Queue()
+        self.broadcastMissions: queue.Queue[VoiceChatResponseV2] = queue.Queue(
+        )
         self.currentBroadcastMission: Optional[av.InputContainer |
                                                av.OutputContainer] = None
         self.ttsUseModel = self.bot.memory.getCharTTSUseModel()
         self.AIDubMiddlewareAPI = AIDubMiddlewareAPI.AIDubMiddlewareAPI(
             self.dataProvider.getGPTSoVITsMiddleware())
-        self.tha4Api = Tha4Api.Tha4Api(self.dataProvider.getTha4MiddlewareAPI())
+        self.tha4Api = Tha4Api.Tha4Api(
+            self.dataProvider.getTha4MiddlewareAPI())
         self.tha4ApiSessionName = ''
         self.tha4Participant = None
         self.chat_lock = threading.Lock()
@@ -273,7 +279,7 @@ class VoiceChatSession:
                     resp = resp.replace(f'（{i}）', '|<spliter>|')
                     # I hate gemini-1.0
                     resp = resp.replace(f':{i}:', '|<spliter>|')
-                    
+
                 resp = re.sub(r'\.(?!\.)', '.|<spliter>|', resp)
                 resp = resp.replace(f'?', '?|<spliter>|')
                 resp = resp.replace(f'!', '!|<spliter>|')
@@ -373,8 +379,6 @@ class VoiceChatSession:
 
         ext = mimetypes.guess_extension(mimeType)
         logger.Logger.log('using audio extension:', ext)
-
-        
 
         await self.wait_until_llm_session_ready()
         async for frame in stream:
@@ -496,7 +500,6 @@ class VoiceChatSession:
 
             await self.send_llm(input={"data": buffer.tobytes(), "mime_type": "image/jpeg"})
 
-
     async def send_llm(self, input, end_of_turn=False):
         await self.llmSession.send(input=input, end_of_turn=end_of_turn)
 
@@ -516,9 +519,12 @@ class VoiceChatSession:
             lambda s: self.connectionLogs.append(s))
         logger.Logger.log('Establishing connection to THA4 API...')
         self.live2d_token = live2d_token
-        self.tha4_service = self.dataProvider.getCharacterTHA4Service(self.charName)
-        self.tha4ApiSessionName = self.tha4Api.establish_session(self.tha4_service['configuration'], self.tha4_service['avatar'], 30, self.live2d_token, f'wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}')
-        logger.Logger.log(f"THA4 API session established: {self.tha4ApiSessionName}")
+        self.tha4_service = self.dataProvider.getCharacterTHA4Service(
+            self.charName)
+        self.tha4ApiSessionName = self.tha4Api.establish_session(
+            self.tha4_service['configuration'], self.tha4_service['avatar'], 30, self.live2d_token, f'wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}')
+        logger.Logger.log(
+            f"THA4 API session established: {self.tha4ApiSessionName}")
 
         # patch for google.genai
         if os.getenv("ALL_PROXY") is not None:
@@ -581,7 +587,8 @@ class VoiceChatSession:
         def on_connected() -> None:
             logger.Logger.log("connected")
 
-        logger.Logger.log(f'connecting to room wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL} with {botToken} ...')
+        logger.Logger.log(
+            f'connecting to room wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL} with {botToken} ...')
         await self.chatRoom.connect(f"wss://{webFrontend.config.LIVEKIT_API_EXTERNAL_URL}", botToken)
 
         # publish track
@@ -647,7 +654,7 @@ class VoiceChatSession:
             # "./temp/wdnmd.wav", "r")
         else:
             self.currentBroadcastMission, self.currentBroadcastText = self.broadcastMissions.get().get()
-            
+
         return self.currentBroadcastMission
 
     async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int = 1000):
@@ -659,9 +666,11 @@ class VoiceChatSession:
                 # logger.Logger.log('done2')
             else:
                 logger.Logger.log('broadcasting mission...')
-                sentiment = self.AIDubMiddlewareAPI.sentiment(self.currentBroadcastText)['sentiment']
+                sentiment = self.AIDubMiddlewareAPI.sentiment(
+                    self.currentBroadcastText)['sentiment']
                 self.tha4Api.switch_state(self.tha4ApiSessionName, sentiment)
-                logger.Logger.log(f"Sentiment: {sentiment}, emitted switch_state signal.")
+                logger.Logger.log(
+                    f"Sentiment: {sentiment}, emitted switch_state signal.")
                 frame: Optional[av.AudioFrame] = None
                 for frame in self.currentBroadcastMission.decode(audio=0):
                     # logger.Logger.log(frame.sample_rate, frame.rate, frame.samples, frame.time_base, frame.dts, frame.pts, frame.time, len(frame.layout.channels), len(frame.to_ndarray().astype(numpy.int16).tobytes()), len(
@@ -810,7 +819,7 @@ class ChatroomSession:
             logger.Logger.log('Triggering intermediate response callback')
             logger.Logger.log(f'{response}')
             result = self.dataProvider.parseModelResponse(response)
-            
+
             self.dataProvider.saveChatHistory(self.charName, result)
             self.trigger('message', result)
 
@@ -835,7 +844,7 @@ class ChatroomSession:
 
     def beginChat(self, msgChain: list[str]):
         f = self.dataProvider.parseMessageChain(msgChain)
-        
+
         self.trigger('message', f)
         plain = self.chatbot.begin(
             self.dataProvider.convertMessageHistoryToModelInput(f))
@@ -852,9 +861,12 @@ class ChatroomSession:
             for i in self.chatbot.getAvailableStickers():
                 plain = plain.replace(f'（{i}）', f"({i})")
                 plain = plain.replace(f':{i}:', f":{i}:")
+            
+            for content in self.dataProvider.convertModelResponseToAudioV2(
+                self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain)):
+                self.dataProvider.saveChatHistory(self.charName, [content])
+                self.trigger('message', [content])
 
-            result = self.dataProvider.convertModelResponseToAudioV2(
-                self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain))
         else:
             plain = EmojiToStickerInstrctionModel(plain, ''.join(
                 f'({i}) ' for i in self.chatbot.getAvailableStickers()))
@@ -864,59 +876,44 @@ class ChatroomSession:
                 plain = plain.replace(f':{i}:', f":{i}:")
 
             result = self.dataProvider.parseModelResponse(plain)
+            self.dataProvider.saveChatHistory(self.charName, result)
+            self.trigger('message', result)
 
-        
-        self.dataProvider.saveChatHistory(self.charName, result)
-
-        self.trigger('message', result)
 
     def sendMessage(self, msgChain: list[str]) -> None:
         f = self.dataProvider.parseMessageChain(msgChain)
-        
+
         self.trigger('message', f)
         self.dataProvider.saveChatHistory(self.charName, f)
 
         result = None
         retries = 0
         while result == None:
-            try:
-                plain = self.chatbot.chat(
-                    userInput=self.dataProvider.convertMessageHistoryToModelInput(f))
-                if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None"  and random.randint(1, 5) == 1:
-                    # if True:
-                    for i in self.chatbot.getAvailableStickers():
-                        plain = plain.replace(f'（{i}）', f"({i})")
-                        plain = plain.replace(f':{i}:', f":{i}:")
+            plain = tools.retryWrapper(lambda: self.chatbot.chat(
+                userInput=self.dataProvider.convertMessageHistoryToModelInput(f)))
+            if TokenCounter(plain) < 621 and self.chatbot.memory.getCharTTSUseModel() != "None" and random.randint(1, 5) == 1:
+                # if True:
+                for i in self.chatbot.getAvailableStickers():
+                    plain = plain.replace(f'（{i}）', f"({i})")
+                    plain = plain.replace(f':{i}:', f":{i}:")
 
-                    result = self.dataProvider.convertModelResponseToAudioV2(
-                        self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain))
-                else:
-                    plain = EmojiToStickerInstrctionModel(plain, ''.join(
-                        f'({i}) ' for i in self.chatbot.getAvailableStickers()))
-                    plain = removeEmojis(plain)
-                    for i in self.chatbot.getAvailableStickers():
-                        plain = plain.replace(f'（{i}）', f"({i})")
-                        plain = plain.replace(f':{i}:', f":{i}:")
+                for content in self.dataProvider.convertModelResponseToAudioV2(
+                    self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain)):
+                    self.dataProvider.saveChatHistory(self.charName, [content])
+                    self.trigger('message', [content])
+                    
+            else:
+                plain = tools.retryWrapper(lambda: EmojiToStickerInstrctionModel(plain, ''.join(
+                    f'({i}) ' for i in self.chatbot.getAvailableStickers())))
+                plain = removeEmojis(plain)
+                for i in self.chatbot.getAvailableStickers():
+                    plain = plain.replace(f'（{i}）', f"({i})")
+                    plain = plain.replace(f':{i}:', f":{i}:")
 
-                    result = self.dataProvider.parseModelResponse(plain)
+                result = self.dataProvider.parseModelResponse(plain)
 
-                
                 self.dataProvider.saveChatHistory(self.charName, result)
-
                 self.trigger('message', result)
-            except Exception as e:
-                if retries < 3:
-                    retries += 1
-                    logger.Logger.log(
-                        f"Error in sending message, retrying {retries} times: {e}")
-                    time.sleep(1)
-                else:
-                    logger.Logger.log(
-                        f"Error in sending message, giving up: {e}")
-                    raise e
-        
-        self.dataProvider.saveChatHistory(self.charName, result)
-        self.trigger('message', result)
 
 
 class chatbotManager:

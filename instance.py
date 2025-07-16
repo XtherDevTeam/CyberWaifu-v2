@@ -24,10 +24,12 @@ class Chatbot:
             logger.Logger.log('Real time session detected, LLM initialization skipped.')
         self.toolsHandler = None if rtSession else webFrontend.extensionHandler.ToolsHandler(
             None, memory.dataProvider, enabled_tools, enabled_user_scripts)
-        self.llm = None if rtSession else models.ChatModelProvider(models.PreprocessPrompt(memory.createCharPromptFromCharacter(userName), {
+        self._prompt = models.PreprocessPrompt(memory.createCharPromptFromCharacter(userName), {
             'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions,
             'extra_info': self.toolsHandler.generated_extra_infos
-        }))
+        })
+        logger.Logger.log(f'Prompt: {self._prompt}')
+        self.llm = None if rtSession else models.ChatModelProvider(self._prompt)
         self.memory = memory
         self.userName = userName
         self.inChatting = False

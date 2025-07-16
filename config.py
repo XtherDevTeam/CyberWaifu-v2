@@ -199,7 +199,7 @@ Your given task is to convert the emojis into the available sticker instructions
 
 Guidelines:
 1. Find each emoji in the message and understand them in accordance with the context.
-2. Convert them to corresponding available sticker instructions. 
+2. Convert them to corresponding available sticker instructions. But preserve for emoji `🎵`, do not remove this remove.
    If there are no available sticker instructions matches the meaning, **replace it with available sticker**instructions which have similar meaning.
 3. Output the result contained the converted message.
 
