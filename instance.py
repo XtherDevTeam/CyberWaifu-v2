@@ -28,7 +28,7 @@ class Chatbot:
         self._prompt = models.PreprocessPrompt(memory.createCharPromptFromCharacter(userName), {
             'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions,
             'extra_info': self.toolsHandler.generated_extra_infos
-        })
+        }) if not rtSession else None
         logger.Logger.log(f'Prompt: {self._prompt}')
         self.llm = None if rtSession else models.ChatModelProvider(self._prompt)
         self.memory = memory

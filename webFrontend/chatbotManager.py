@@ -648,14 +648,18 @@ class VoiceChatSession:
         return audio_frame
 
     def fetchBroadcastMission(self) -> None:
-        if self.broadcastMissions.empty():
-            self.currentBroadcastMission = None
-            # self.currentBroadcastMission = av.open(
-            # "./temp/wdnmd.wav", "r")
-        else:
-            self.currentBroadcastMission, self.currentBroadcastText = self.broadcastMissions.get().get()
+        try:
+            if self.broadcastMissions.empty():
+                self.currentBroadcastMission = None
+                # self.currentBroadcastMission = av.open(
+                # "./temp/wdnmd.wav", "r")
+            else:
+                self.currentBroadcastMission, self.currentBroadcastText = self.broadcastMissions.get().get()
 
-        return self.currentBroadcastMission
+            return self.currentBroadcastMission
+        except Exception as e:
+            logger.Logger.log(f"Error fetching broadcast mission: {e}")
+            return None
 
     async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int = 1000):
         logger.Logger.log('broadcasting audio...')
