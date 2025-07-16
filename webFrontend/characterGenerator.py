@@ -24,7 +24,8 @@ class CharacterGenerator:
         self.prompt = models.PreprocessPrompt(config.CREATE_CHARACTER_PROMPT, {
             'charName': name,
             'toolsPrompt': models.PreprocessPrompt(config.TOOLS_PROMPT, {
-                'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions
+                'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions,
+                'extra_info': self.toolsHandler.generated_extra_infos
             })
         })
         self.llm = models.ThinkingModelProvider('')

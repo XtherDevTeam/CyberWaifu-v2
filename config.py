@@ -71,11 +71,16 @@ Tool Usage Constraints:
 Occasions and Uses:
 You can use them at any time and even consecutively if you feel like it. They are not just for finishing this turn of chat. Use them to imitate the most of your personality.
 Finally when you are done with your investigation, or when you think it is not nessary to use any tools, you can simply not to use any tool invocation and continue with your conversation.
+
+Besides here is some extra infos that may be useful during your conversation:
+
+{{extra_info}}
 '''
 '''
 The extensive prompt for the tool interaction format and available tools.
 Param used in this prompt:
 - generated_tool_descriptions
+- extra_info
 '''
  
 

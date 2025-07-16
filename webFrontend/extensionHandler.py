@@ -29,6 +29,7 @@ class ToolsHandler:
         self.dataProvider = dataProvider
         self.generated_tool_descriptions = ''.join(
             [workflowTools.GetToolReadableDescription(i) for i in enabled_tools])
+        self.generated_extra_infos = ''.join([i['content'] for i in self.dataProvider.getAllEnabledExtraInfos()])
         
         self.enabled_tools = enabled_tools
         self.parsed_user_scripts: list[UserScript] = []

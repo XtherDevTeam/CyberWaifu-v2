@@ -536,7 +536,8 @@ class VoiceChatSession:
         model_id = "gemini-2.5-flash-live-preview"
         gemini_config = {"response_modalities": ["TEXT"], "system_instruction": models.PreprocessPrompt(self.bot.memory.createCharPromptFromCharacter(
             self.bot.userName), {
-            'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions
+            'generated_tool_descriptions': self.toolsHandler.generated_tool_descriptions,
+            'extra_info': self.toolsHandler.generated_extra_infos
         }), "temperature": 0.9}
         self.llmPreSession = client.aio.live.connect(
             model=model_id, config=gemini_config)
