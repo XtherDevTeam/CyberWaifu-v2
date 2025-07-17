@@ -19,3 +19,6 @@ nest_asyncio
 noisereduce
 torchaudio
 onnxruntime
+google-genai
+flask-socketio
+websockets_proxy

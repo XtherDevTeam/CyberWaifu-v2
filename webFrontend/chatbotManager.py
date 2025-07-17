@@ -533,8 +533,11 @@ class VoiceChatSession:
             proxy = websockets_proxy.Proxy.from_url(os.getenv("ALL_PROXY"))
 
             def fake_connect(*args, **kwargs):
+                logger.Logger.log("google.genai.live.connect patch activated")
+                
                 return websockets_proxy.proxy_connect(*args, proxy=proxy, **kwargs)
-            google.genai.live.connect = fake_connect
+            
+            google.genai.live.ws_connect = fake_connect
 
         self.toolsHandler = webFrontend.extensionHandler.ToolsHandler(
             None, self.dataProvider, workflowTools.AvailableTools(), self.dataProvider.getAllEnabledUserScripts())
@@ -673,14 +676,17 @@ class VoiceChatSession:
                 last_time = time.time()
             else:
                 last_sec_frame += 1
-            frame = self.audioFrameToBroadcast.get()
-            if frame is None:
-                logger.Logger.log('consumeAudioFrame loop stopped by None frame')
-                break # exit signal
-            if isinstance(frame, typing.Callable):
-                frame()
-            elif isinstance(frame, livekit.rtc.AudioFrame):
-                await source.capture_frame(frame)
+            try:
+                frame = self.audioFrameToBroadcast.get_nowait()
+                if frame is None:
+                    logger.Logger.log('consumeAudioFrame loop stopped by None frame')
+                    break # exit signal
+                if isinstance(frame, typing.Callable):
+                    frame()
+                elif isinstance(frame, livekit.rtc.AudioFrame):
+                    await source.capture_frame(frame)
+            except queue.Empty:
+                await asyncio.sleep(1 / 100)
         
         logger.Logger.log('consumeAudioFrame loop stopped')
 
@@ -819,6 +825,7 @@ class VoiceChatSession:
         async def f():
             logger.Logger.log('terminating chat session...')
             await self.send_llm('EOF', end_of_turn=True)
+            self.audioFrameToBroadcast.put(None)
             # do it in chat thread
             SileroVAD.SileroVAD.reset()
             logger.Logger.unregisterCallback(self.loggerCallbackId)
