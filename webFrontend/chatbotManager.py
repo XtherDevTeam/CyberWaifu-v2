@@ -164,7 +164,7 @@ class VoiceChatSession:
         self.tha4ApiSessionName = ''
         self.tha4Participant = None
         self.chat_lock = threading.Lock()
-        self.message_queue: list[str] = []
+        self.audioFrameToBroadcast: queue.Queue[livekit.rtc.AudioFrame] = queue.Queue()
         self.terminateSessionCallback = None
         self.loop: asyncio.AbstractEventLoop = None
         self.audioBroadcastingThread: threading.Thread = None
@@ -182,7 +182,7 @@ class VoiceChatSession:
         while self.llmSession is None:
             await asyncio.sleep(0.1)
 
-    def runBroadcastingLoop(self, audioSource) -> None:
+    def runAudioFetchingLoop(self) -> None:
         """
         Start the loop for broadcasting missions.
 
@@ -191,7 +191,7 @@ class VoiceChatSession:
         """
         logger.Logger.log('starting broadcasting loop')
         new_loop = asyncio.new_event_loop()
-        new_loop.run_until_complete(self.broadcastAudioLoop(audioSource))
+        new_loop.run_until_complete(self.fetchBroadcastMissionLoop())
 
     def runVideoBroadcastingLoop(self, videoSource) -> None:
         """
@@ -612,11 +612,11 @@ class VoiceChatSession:
         # logger.Logger.log(f"broadcast video track published: {
         #     publication_video.track.name}")
         asyncio.ensure_future(self.chatRealtime())
-        asyncio.ensure_future(self.broadcastAudioLoop(audioSource))
+        asyncio.ensure_future(self.consumeAudioFrame(audioSource))
         # asyncio.ensure_future(self.broadcastVideoLoop(videoSource))
-        # self.audioBroadcastingThread = threading.Thread(
-        #     target=self.runBroadcastingLoop, args=(audioSource,))
-        # self.audioBroadcastingThread.start()
+        self.audioFetchingThread = threading.Thread(
+            target=self.runAudioFetchingLoop, args=())
+        self.audioFetchingThread.start()
         # self.videoBroadcastingThread = threading.Thread(
         #     target=self.runVideoBroadcastingLoop, args=(videoSource,))
         # self.videoBroadcastingThread.start()
@@ -661,18 +661,43 @@ class VoiceChatSession:
             logger.Logger.log(f"Error fetching broadcast mission: {e}")
             return None
 
-    async def broadcastAudioLoop(self, source: livekit.rtc.AudioSource, frequency: int = 1000):
+    async def consumeAudioFrame(self, source: livekit.rtc.AudioSource) -> None:
+        last_sec_frame = 0
+        last_time = time.time()
+        logger.Logger.log('consumeAudioFrame loop started')
+        while self.connected:
+            if last_time + 1 < time.time():
+                logger.Logger.log(
+                    f"consumeAudioFrame: last second: {last_sec_frame} frames")
+                last_sec_frame = 0
+                last_time = time.time()
+            else:
+                last_sec_frame += 1
+            frame = self.audioFrameToBroadcast.get()
+            if frame is None:
+                logger.Logger.log('consumeAudioFrame loop stopped by None frame')
+                break # exit signal
+            if isinstance(frame, typing.Callable):
+                frame()
+            elif isinstance(frame, livekit.rtc.AudioFrame):
+                await source.capture_frame(frame)
+        
+        logger.Logger.log('consumeAudioFrame loop stopped')
+
+    async def fetchBroadcastMissionLoop(self, frequency: int = 1000):
         logger.Logger.log('broadcasting audio...')
         while self.connected:
             if self.fetchBroadcastMission() is None:
                 # logger.Logger.log('capturing empty audio frame...')
-                await source.capture_frame(self.generateEmptyAudioFrame())
+                # self.audioFrameToBroadcast.put(self.generateEmptyAudioFrame())
                 # logger.Logger.log('done2')
+                self.audioFrameToBroadcast.put(self.generateEmptyAudioFrame())
+                await asyncio.sleep(1/30)
             else:
                 logger.Logger.log('broadcasting mission...')
                 sentiment = self.AIDubMiddlewareAPI.sentiment(
                     self.currentBroadcastText)['sentiment']
-                self.tha4Api.switch_state(self.tha4ApiSessionName, sentiment)
+                self.audioFrameToBroadcast.put_nowait(lambda: self.tha4Api.switch_state(self.tha4ApiSessionName, sentiment))
                 logger.Logger.log(
                     f"Sentiment: {sentiment}, emitted switch_state signal.")
                 frame: Optional[av.AudioFrame] = None
@@ -699,7 +724,7 @@ class VoiceChatSession:
                         logger.Logger.log(
                             'Error processing frame, skipping it.')
                         continue
-                    await source.capture_frame(livekitFrame)
+                    self.audioFrameToBroadcast.put(livekitFrame)
 
         logger.Logger.log('broadcasting audio stopped')
 
