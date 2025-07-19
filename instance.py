@@ -19,10 +19,11 @@ import workflowTools
 import webFrontend.extensionHandler
 
 
-class Chatbot:    
+class Chatbot:
     def __init__(self, memory: memory.Memory, userName: str, enabled_tools: list[typing.Callable] = workflowTools.AvailableTools(), enabled_user_scripts: list[dict[str, str]] = [], enabled_extra_infos: list[dict[str, str]] = [], rtSession: bool = False) -> None:
         if rtSession:
-            logger.Logger.log('Real time session detected, LLM initialization skipped.')
+            logger.Logger.log(
+                'Real time session detected, LLM initialization skipped.')
         self.toolsHandler = None if rtSession else webFrontend.extensionHandler.ToolsHandler(
             None, memory.dataProvider, enabled_tools, enabled_user_scripts)
         self._prompt = models.PreprocessPrompt(memory.createCharPromptFromCharacter(userName), {
@@ -30,14 +31,16 @@ class Chatbot:
             'extra_info': self.toolsHandler.generated_extra_infos
         }) if not rtSession else None
         logger.Logger.log(f'Prompt: {self._prompt}')
-        self.llm = None if rtSession else models.ChatModelProvider(self._prompt)
+        self.llm = None if rtSession else models.ChatModelProvider(
+            self._prompt)
         self.memory = memory
         self.userName = userName
         self.inChatting = False
         self.conversation = conversation.ConversationMemory(
             userName, self.memory)
-        self.memoryExtractor = conversation.MemoryExtractor(self.conversation, self.memory)
-        
+        self.memoryExtractor = conversation.MemoryExtractor(
+            self.conversation, self.memory)
+
         self.toolsHandler.bindLLM(self.llm) if self.toolsHandler else None
 
     def __enter__(self):
@@ -45,7 +48,8 @@ class Chatbot:
 
     def switchUser(self, name: str) -> None:
         if self.inChatting:
-            logger.Logger.log('Unable to perform this action: Character is chatting!')
+            logger.Logger.log(
+                'Unable to perform this action: Character is chatting!')
         else:
             self.userName = name
 
@@ -60,7 +64,8 @@ class Chatbot:
             'message': i,
         } for i in modelInput)
         modelInput.append(f"Reference memory: {referenceMemory.strip()}")
-        msg = self.toolsHandler.handleRawResponse(self.llm.initiate(modelInput))
+        msg = self.toolsHandler.handleRawResponse(
+            self.llm.initiate(modelInput))
         self.conversation.storeBotInput(msg)
         self.memoryExtractor.setPendingBotMessage(msg)
         logger.Logger.log(msg)
@@ -77,22 +82,18 @@ class Chatbot:
             mime, binary = self.memory.dataProvider.getAttachment(
                 message['content'])
 
-            binaryIO = io.BytesIO(binary)
-            
-            r = self.llm.getClient().files.upload(file=binaryIO, config={
+            return {
+                'data': binary,
                 'mime_type': mime
-            })
-            return r
+            }
         elif message['content_type'] == 'audio':
             mime, binary = self.memory.dataProvider.getAttachment(
                 message['content'])
 
-            binaryIO = io.BytesIO(binary)
-            
-            r = self.llm.getClient().files.upload(file=binaryIO, config={
+            return {
+                'data': binary,
                 'mime_type': mime
-            })
-            return r
+            }
         else:
             raise ValueError(f'{__name__}: Unknown message type: {
                 message["type"]}')
@@ -120,10 +121,10 @@ class Chatbot:
     def termination(self) -> None:
         summary = self.llm.chat(f'EOF')
         self.memory.storeMemory(self.userName, summary)
-        
+
     def terminationWithSummary(self, summary: str) -> None:
         self.memory.storeMemory(self.userName, summary)
-        
+
     def terminateChatWithSummary(self, summary: str) -> None:
         self.inChatting = False
         self.terminationWithSummary(summary)
