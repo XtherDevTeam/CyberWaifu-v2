@@ -121,6 +121,13 @@ class Chatbot:
     def termination(self) -> None:
         summary = self.llm.chat(f'EOF')
         self.memory.storeMemory(self.userName, summary)
+        
+    def terminationWithSummary(self, summary: str) -> None:
+        self.memory.storeMemory(self.userName, summary)
+        
+    def terminateChatWithSummary(self, summary: str) -> None:
+        self.inChatting = False
+        self.terminationWithSummary(summary)
 
     def terminationWithSummary(self, summary: str) -> None:
         self.memory.storeMemory(self.userName, summary)
