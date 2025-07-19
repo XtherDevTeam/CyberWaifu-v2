@@ -164,7 +164,8 @@ class VoiceChatSession:
         self.tha4ApiSessionName = ''
         self.tha4Participant = None
         self.chat_lock = threading.Lock()
-        self.audioFrameToBroadcast: queue.Queue[livekit.rtc.AudioFrame] = queue.Queue()
+        self.audioFrameToBroadcast: queue.Queue[livekit.rtc.AudioFrame] = queue.Queue(
+        )
         self.terminateSessionCallback = None
         self.loop: asyncio.AbstractEventLoop = None
         self.audioBroadcastingThread: threading.Thread = None
@@ -534,13 +535,28 @@ class VoiceChatSession:
 
             def fake_connect(*args, **kwargs):
                 logger.Logger.log("google.genai.live.connect patch activated")
-                
+
                 return websockets_proxy.proxy_connect(*args, proxy=proxy, **kwargs)
-            
+
             google.genai.live.ws_connect = fake_connect
 
         self.toolsHandler = webFrontend.extensionHandler.ToolsHandler(
             None, self.dataProvider, workflowTools.AvailableTools(), self.dataProvider.getAllEnabledUserScripts())
+
+        def terminate_intent(summary: str) -> None:
+            self.bot.memory.storeMemory(self.bot.userName, summary)
+            self.bot.memory.dataProvider.saveChatHistory(self.bot.memory.getCharName(), [
+                {
+                    'type': dataProvider.ChatHistoryType.TEXT,
+                    'text': f'Voice chat: duration {time.strftime("%H:%M:%S", time.gmtime(time.time() - self.beginTime))}',
+                    'timestamp': int(time.time()),
+                    'role': 'user'
+                }
+            ])
+            self.terminateSession(False)
+            
+        self.toolsHandler.on('terminate_intent', terminate_intent)
+
         client = google.genai.Client(http_options={'api_version': 'v1alpha'})
         model_id = "gemini-2.5-flash-live-preview"
         gemini_config = {"response_modalities": ["TEXT"], "system_instruction": models.PreprocessPrompt(self.bot.memory.createCharPromptFromCharacter(
@@ -584,6 +600,9 @@ class VoiceChatSession:
                 f"participant disconnected: {
                     participant.sid} {participant.identity}"
             )
+            if participant.identity == 'live2d':
+                logger.Logger.log('Live2D participant detected, ignoring...')
+                pass
             self.terminateSession()
 
         @self.chatRoom.on("connected")
@@ -679,15 +698,16 @@ class VoiceChatSession:
             try:
                 frame = self.audioFrameToBroadcast.get_nowait()
                 if frame is None:
-                    logger.Logger.log('consumeAudioFrame loop stopped by None frame')
-                    break # exit signal
+                    logger.Logger.log(
+                        'consumeAudioFrame loop stopped by None frame')
+                    break  # exit signal
                 if isinstance(frame, typing.Callable):
                     frame()
                 elif isinstance(frame, livekit.rtc.AudioFrame):
                     await source.capture_frame(frame)
             except queue.Empty:
                 await asyncio.sleep(1 / 100)
-        
+
         logger.Logger.log('consumeAudioFrame loop stopped')
 
     async def fetchBroadcastMissionLoop(self, frequency: int = 1000):
@@ -703,7 +723,8 @@ class VoiceChatSession:
                 logger.Logger.log('broadcasting mission...')
                 sentiment = self.AIDubMiddlewareAPI.sentiment(
                     self.currentBroadcastText)['sentiment']
-                self.audioFrameToBroadcast.put_nowait(lambda: self.tha4Api.switch_state(self.tha4ApiSessionName, sentiment))
+                self.audioFrameToBroadcast.put_nowait(
+                    lambda: self.tha4Api.switch_state(self.tha4ApiSessionName, sentiment))
                 logger.Logger.log(
                     f"Sentiment: {sentiment}, emitted switch_state signal.")
                 frame: Optional[av.AudioFrame] = None
@@ -811,7 +832,7 @@ class VoiceChatSession:
             'data': buffer.tobytes()
         }
 
-    def terminateSession(self) -> None:
+    def terminateSession(self, send_eof: bool = True) -> None:
         """
         Terminate the chat session.
 
@@ -822,9 +843,10 @@ class VoiceChatSession:
         logger.Logger.log('Triggering terminate session callback')
         self.terminateSessionCallback()
 
-        async def f():
+        async def f(send_eof: bool = True):
             logger.Logger.log('terminating chat session...')
-            await self.send_llm('EOF', end_of_turn=True)
+            if send_eof:
+                await self.send_llm('EOF', end_of_turn=True)
             self.audioFrameToBroadcast.put(None)
             # do it in chat thread
             SileroVAD.SileroVAD.reset()
@@ -832,7 +854,7 @@ class VoiceChatSession:
             await self.chatRoom.disconnect()
             self.tha4Api.shutdown_session(self.tha4ApiSessionName)
 
-        asyncio.ensure_future(f())
+        asyncio.ensure_future(f(send_eof=send_eof))
 
 
 class ChatroomSession:
@@ -850,6 +872,8 @@ class ChatroomSession:
         self.available_events = {
             'message': [],
         }
+        self.trigger_labelled = False  # whether triggered before
+        self.terminated = False
 
         def tools_handler_intermediate_response(response: str) -> None:
             logger.Logger.log('Triggering intermediate response callback')
@@ -859,11 +883,28 @@ class ChatroomSession:
             self.dataProvider.saveChatHistory(self.charName, result)
             self.trigger('message', result)
 
+        def tools_handler_terminate_intent(summary: str) -> None:
+            logger.Logger.log('Triggering terminate intent callback')
+            logger.Logger.log(f'{summary}')
+            self.terminateWithSummary(summary)
+
         self.chatbot.toolsHandler.on(
             'intermediate_response', tools_handler_intermediate_response)
 
+        self.chatbot.toolsHandler.on(
+            'terminate_intent', tools_handler_terminate_intent)
+
     def terminate(self):
+        if self.terminated:
+            return
         self.chatbot.terminateChat()
+        self.terminated = True
+
+    def terminateWithSummary(self, summary: str):
+        if self.terminated:
+            return
+        self.chatbot.terminateChatWithSummary(summary)
+        self.terminated = True
 
     def on(self, event: str, callback: typing.Callable[..., None]) -> None:
         if event in self.available_events:
@@ -897,9 +938,9 @@ class ChatroomSession:
             for i in self.chatbot.getAvailableStickers():
                 plain = plain.replace(f'（{i}）', f"({i})")
                 plain = plain.replace(f':{i}:', f":{i}:")
-            
+
             for content in self.dataProvider.convertModelResponseToAudioV2(
-                self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain)):
+                    self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain)):
                 self.dataProvider.saveChatHistory(self.charName, [content])
                 self.trigger('message', [content])
 
@@ -915,12 +956,15 @@ class ChatroomSession:
             self.dataProvider.saveChatHistory(self.charName, result)
             self.trigger('message', result)
 
-
     def sendMessage(self, msgChain: list[str]) -> None:
         f = self.dataProvider.parseMessageChain(msgChain)
 
-        self.trigger('message', f)
-        self.dataProvider.saveChatHistory(self.charName, f)
+        if msgChain[0] != '[trigger]':
+            self.trigger('message', f)
+            self.dataProvider.saveChatHistory(self.charName, f)
+            self.trigger_labelled = False
+        else:
+            self.trigger_labelled = True
 
         result = None
         retries = 0
@@ -934,10 +978,10 @@ class ChatroomSession:
                     plain = plain.replace(f':{i}:', f":{i}:")
 
                 for content in self.dataProvider.convertModelResponseToAudioV2(
-                    self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain)):
+                        self.chatbot.memory.getCharTTSUseModel(), self.dataProvider.parseModelResponse(plain)):
                     self.dataProvider.saveChatHistory(self.charName, [content])
                     self.trigger('message', [content])
-                    
+
             else:
                 plain = tools.retryWrapper(lambda: EmojiToStickerInstrctionModel(plain, ''.join(
                     f'({i}) ' for i in self.chatbot.getAvailableStickers())))
@@ -951,17 +995,20 @@ class ChatroomSession:
                 self.dataProvider.saveChatHistory(self.charName, result)
                 self.trigger('message', result)
 
+    def trigger_trigger(self):
+        self.sendMessage(['[trigger]'])
+
 
 class ChatroomSessionTesting:
     # a simple echo session for testing
-    
+
     def __init__(self, sessionName: str, charName: str, dProvider: dataProvider.DataProvider):
         self.dataProvider = dProvider
         self.charName = charName
         self.available_events = {
             'message': [],
         }
-        
+
     def beginChat(self, msgChain: list[str]):
         f = self.dataProvider.parseMessageChain(msgChain)
         logger.Logger.log(f'Dummy echo session received: {f}')
@@ -977,7 +1024,7 @@ class ChatroomSessionTesting:
         test = self.dataProvider.parseModelResponse(test)
         self.trigger('message', f)
         self.trigger('message', test)
-        
+
     def sendMessage(self, msgChain: list[str]) -> None:
         f = self.dataProvider.parseMessageChain(msgChain)
         self.trigger('message', f)
@@ -998,7 +1045,7 @@ class ChatroomSessionTesting:
 
     def terminate(self):
         pass
-    
+
     def on(self, event: str, callback: typing.Callable[..., None]) -> None:
         if event in self.available_events:
             self.available_events[event].append(callback)
@@ -1057,11 +1104,12 @@ class chatbotManager:
             'message', sessionName, x))
 
         self.pool[sessionName] = {
-            'expireTime': time.time() + 60 * 5,
+            'expireTime': time.time() + 60 * 10,
             'session': session,
             'history': [],
             'charName': charName,
-            'client': None
+            'client': None,
+            'lastActiveTime': time.time(),
         }
 
         return sessionName
@@ -1145,7 +1193,9 @@ class chatbotManager:
         # create a new real time session
         self.rtPool[sessionName] = {
             'charName': charName,
-            'voiceChatSession': voiceSession
+            'voiceChatSession': voiceSession,
+            'establishTime': time.time(),
+            'lastActiveTime': time.time(),
         }
 
         return sessionName
@@ -1154,7 +1204,9 @@ class chatbotManager:
         if sessionName in self.pool:
             r: ChatroomSession = self.pool[sessionName]['session']
             if doRenew:
-                self.pool[sessionName]['expireTime'] = time.time() + 60 * 5
+                self.pool[sessionName]['expireTime'] = time.time(
+                ) + 60 * 10 if not r.trigger_labelled else self.pool[sessionName]['expireTime']
+                self.pool[sessionName]['lastActiveTime'] = time.time()
                 logger.Logger.log('Session renewed: ',
                                   self.pool[sessionName]['expireTime'])
             return r
@@ -1229,6 +1281,9 @@ class chatbotManager:
                 logger.Logger.log(i, time.time(), self.pool[i]['expireTime'])
                 if time.time() > self.pool[i]['expireTime']:
                     self.terminateSession(i)
+                elif isinstance(self.pool[i]['session'], ChatroomSession) and time.time() > self.pool[i]['lastActiveTime'] + 60 * 3:
+                    self.pool[i]['session'].trigger_trigger()
+
             # do not clean real time session pool until users terminate it themselves
 
             time.sleep(1 * 60)

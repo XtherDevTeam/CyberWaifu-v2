@@ -25,6 +25,7 @@ class ToolsHandler:
         self.available_events = {
             'intermediate_response': [],
             'unhandled_intent': [],
+            'terminate_intent': []
         }
         self.dataProvider = dataProvider
         self.generated_tool_descriptions = ''.join(
@@ -180,11 +181,11 @@ class ToolsHandler:
                     "invocation": args,
                     "result": invocation_result,
                 }
-            case "completed":
+            case "terminate":
                 # invoke hook
-                logger.Logger.log(f'Handling intent {intent}')
-                # do not handle other intents
-                pass
+                logger.Logger.log(f'Handling intent {intent} with args {args}')
+                self.trigger('terminate_intent', args)
+                return None
             case _:
                 self.trigger('unhandled_intent', intent, args)
                 return None
