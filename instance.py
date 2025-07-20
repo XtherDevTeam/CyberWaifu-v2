@@ -13,6 +13,7 @@ import conversation
 import chatModel
 from langchain_core.messages import SystemMessage, HumanMessage
 import google.genai as genai
+import google.genai.types
 import google.ai.generativelanguage as glm
 import io
 import workflowTools
@@ -90,10 +91,12 @@ class Chatbot:
             mime, binary = self.memory.dataProvider.getAttachment(
                 message['content'])
 
-            return {
-                'data': binary,
-                'mime_type': mime
-            }
+            binary_data = io.BytesIO(binary)
+            self.llm.convert_pool_to_single() # once invoked upload api, it will convert the pool to single
+            self.memoryExtractor.llm.convert_pool_to_single(self.llm.getApiKey())
+            return self.llm.client.files.upload(file=binary_data, config={
+                'mime_type': mime,
+            })
         else:
             raise ValueError(f'{__name__}: Unknown message type: {
                 message["type"]}')

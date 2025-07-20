@@ -73,6 +73,16 @@ class ChatGoogleGenerativeAI():
         self.thinking_budget = thinking_budget
         self.saved_chat_history = []
         
+    def getApiKey(self):
+        return self.client._api_client.api_key
+        
+    def convert_pool_to_single(self, apiKey: str = None) -> None:
+        # convert the pool mode to single mode
+        if self.api_key_mode == "pool":
+            self.api_key_mode = "single"
+            if apiKey is not None:
+                self.client = genai.Client(api_key=apiKey)
+        
     def getClient(self) -> genai.Client:
         return self.client
         
